@@ -1,0 +1,11 @@
+nimcache/
+nimblecache/
+htmldocs/
+*.so
+/tests/test_shared_library
+/tests/test_basic_types
+.gemini
+nimble.develop
+nimble.paths
+nimbledeps
+config.nims
