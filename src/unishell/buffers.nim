@@ -27,21 +27,18 @@ proc `=copy`*(dest: var Buffer; src: Buffer) =
   # Handle self-assignment
   if dest.data == src.data: return
   dest.freeBuffer()
-  
   dest.len = src.len
   dest.cap = src.cap
-  
   if src.len > 0:
     dest.sizes = cast[ptr UncheckedArray[uint]](alloc(uint(src.len * sizeof(uint))))
     dest.offsets = cast[ptr UncheckedArray[uint]](alloc(uint(src.len * sizeof(uint))))
     copyMem(dest.sizes, src.sizes, src.len * sizeof(uint))
     copyMem(dest.offsets, src.offsets, src.len * sizeof(uint))
-    
   if src.cap > 0'u:
     dest.data = alloc(src.cap)
     copyMem(dest.data, src.data, src.cap.int)
 
-  proc `=sink`(dest: var Buffer; src: Buffer) =
+proc `=sink`(dest: var Buffer; src: Buffer) =
   dest.freeBuffer()
   dest.data = src.data
   dest.cap = src.cap
@@ -81,19 +78,19 @@ proc getStringCopy(buf: Buffer, index: int): string {.inline.} =
 # PUBLIC API
 # =============================================================================
 
-proc `==`*(s: string, oa: openArray[char]): bool =
+proc `==`(s: string, oa: openArray[char]): bool =
   if s.len != oa.len: return false
   if s.len == 0: return true
   return equalMem(cast[pointer](unsafeAddr s[0]), cast[pointer](unsafeAddr oa[0]), s.len)
 
-proc `==`*(oa: openArray[char], s: string): bool {.inline.} =
+proc `==`(oa: openArray[char], s: string): bool {.inline.} =
   # Reuses your logic regardless of argument order
   s == oa 
 
-proc `!=`*(oa: openArray[char], s: string): bool {.inline.} =
+proc `!=`(oa: openArray[char], s: string): bool {.inline.} =
   not (oa == s)
 
-proc `!=`*(s: string; oa: openArray[char]): bool {.inline.} =
+proc `!=`(s: string; oa: openArray[char]): bool {.inline.} =
   not (s == oa)
 
 proc len*(buf: Buffer): int {.inline.} = buf.len
