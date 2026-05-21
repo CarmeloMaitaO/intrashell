@@ -1,12 +1,12 @@
 # Unishell
 
-A framework for dynamically loaded, concurrent state-machines, that expose a single interface for interaction and:
+A library for dynamically loaded, concurrent state-machines, that expose a single interface for interaction and:
 - Operate over the same resources (variables, data structures, database connections, ...).
 - Inject dependencies from shared libraries at runtime.
 - Are deployed in:
   - Servers.
   - Desktop Applications.
-  - Unikernels (that have a `dlopen()` system call implemented).
+  - Unikernels (that have a `dlopen()` or equivalent system call implemented).
 
 ## What it does
 
