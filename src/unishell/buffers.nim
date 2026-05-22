@@ -38,7 +38,7 @@ proc freeBuffer(buf: var Buffer) =
   buf.offsets = nil
   buf.data = nil
   buf.len = 0
-  buf.cap = 0
+  buf.cap = 0'u
 
 proc `=destroy`*(buf: var Buffer) =
   # Self-explanatory
@@ -76,15 +76,12 @@ proc `=copy`*(dest: var Buffer; src: Buffer) =
     # They should be ignored
     discard
 
-proc `=sink`(dest: var Buffer; src: Buffer) =
-  dest.freeBuffer()
-  dest.data = src.data
-  dest.cap = src.cap
-  dest.offsets = src.offsets
-  dest.sizes = src.sizes
-  dest.len = src.len
-  # Prevent src from freeing the memory
-  wasMoved(src)
+proc `=wasMoved`*(buffer: var Buffer) =
+  buffer.sizes = nil
+  buffer.offsets = nil
+  buffer.data = nil
+  buffer.len = 0
+  buffer.cap = 0'u
 
 proc freeBufferElementView(view: var BufferElementView) =
   # Resets the view without destroying the data
@@ -127,26 +124,17 @@ proc getView(buffer: Buffer, index: int): BufferElementView {.inline.} =
   else:
     raise newException(IndexDefect, "Index out of bounds")
 
-proc getView(buffer: ptr Buffer, index: int): BufferElementView {.inline.} =
-  result = (buffer[]).getView(index)
+proc `==`(view: BufferElementView; str: string): bool {.inline.} =
+  # This procedure isn't exported to not pollute the namespace
+  if view.len != str.len: return false
+  if view.len == 0: return true
+  return equalMem(view.data, unsafeAddr str[0], view.len)
 
-proc getString(buffer: Buffer, index: int): string {.inline.} =
-  #[
-    Returns a string copy of the view from the buffer under the specified
-    index.
-
-    Uses `getView` to get the view.
-  ]#
-  var view: BufferElementView = buffer.getView(index)
-  # Checks that there is data inside the given index
-  if (view.len > 0) and (view.data != nil):
-    result = newString(view.len)
-    copyMem(addr result[0], addr view.data[0], view.len)
-  else:
-    result = ""
-
-proc getString(buffer: ptr Buffer, index: int): string {.inline.} =
-  result = (buffer[]).getString(index)
+proc `$`(view: BufferElementView): string =
+  # This procedure isn't exported to not pollute the namespace
+  if view.len == 0 or view.data == nil: return ""
+  result = newString(view.len)
+  copyMem(addr result[0], view.data, view.len)
 
 # =============================================================================
 # PUBLIC API
@@ -155,9 +143,6 @@ proc getString(buffer: ptr Buffer, index: int): string {.inline.} =
 proc len*(buf: Buffer): int {.inline.} =
   ## Returns the number of strings contained within the buffer.
   result = buf.len
-
-proc len*(buffer: ptr Buffer): int {.inline.} =
-  result = (buffer[]).len()
 
 proc createBuffer*(strings: seq[string]): Buffer =
   ## Creates a new `Buffer` object from the provided sequence of strings.
@@ -197,32 +182,16 @@ iterator items*(buffer: Buffer): BufferElementView =
   for i in 0 ..< buffer.len:
     yield buffer.getView(i)
 
-iterator items*(buffer: ptr Buffer): BufferElementView =
-  for i in 0 ..< buffer.len():
-    yield buffer.getView(i)
-
 proc find*(buffer: Buffer, item: string): int {.inline.} =
   result = 0
-  var
-    auxBuffer = (@[item]).createBuffer
-    auxView = auxBuffer.getView(0)
   for view in buffer:
-    if view == auxView:
+    if view == item:
       return result
     inc(result)
   return -1
 
-proc find*(buffer: ptr Buffer, item: string): int {.inline.} =
-  result = (buffer[]).find(item)
-
 proc contains*(buffer: Buffer, item: string): bool {.inline.} =
   find(buffer, item) >= 0
 
-proc contains*(buffer: ptr Buffer, item: string): bool {.inline.} =
-  find(buffer, item) >= 0
-
 proc `[]`*(buffer: Buffer, index: int): string =
-  result = buffer.getString(index)
-
-proc `[]`*(buffer: ptr Buffer, index: int): string =
-  result = buffer.getString(index)
+  result = $(buffer.getView(index))
