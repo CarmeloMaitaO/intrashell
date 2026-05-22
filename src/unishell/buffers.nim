@@ -9,12 +9,16 @@
   and are capable of holding binary data, such as files, within them; which
   enables the `Buffer` object to be a buffer of buffers.
 ]##
-type Buffer* = object
-  data: pointer                     ## Single block of raw concatenated string data
-  cap: uint                         ## Length of the `data` field
-  offsets: ptr UncheckedArray[uint] ## Starting offset of each string
-  sizes: ptr UncheckedArray[uint]   ## Length of each string
-  len: int                          ## Number of strings packed inside
+type
+  Buffer* = object
+    data: pointer                     ## Single block of raw concatenated string data
+    cap: uint                         ## Length of the `data` field
+    offsets: ptr UncheckedArray[uint] ## Starting offset of each string
+    sizes: ptr UncheckedArray[uint]   ## Length of each string
+    len: int                          ## Number of strings packed inside
+  BufferElementView* = object
+    data: ptr UncheckedArray[char]
+    len: int
 
 # =============================================================================
 # LIFETIME MANAGEMENT (Automatic Destructors)
@@ -82,48 +86,67 @@ proc `=sink`(dest: var Buffer; src: Buffer) =
   # Prevent src from freeing the memory
   wasMoved(src)
 
+proc freeBufferElementView(view: var BufferElementView) =
+  # Resets the view without destroying the data
+  view.data = nil
+  view.len = 0
+
+proc `=destroy`*(view: var BufferElementView) =
+  view.freeBufferElementView()
+
 # =============================================================================
 # INTERNAL HELPERS
 # =============================================================================
 
-proc getStringView(buf: Buffer, index: int, outPtr: var pointer, outLen: var uint) {.inline.} =
+proc getView(buffer: Buffer, index: int): BufferElementView {.inline.} =
   #[
     Helper procedure that provides direct access to the string inside the
     buffer under the specified index.
 
-    It achieves this by modifying in-place the provided pointer and unsigned
-    integer passed in the parameters; populating them with the address of the
-    string and it's length.
+    It achieves this by casting a pointer to the data, to a pointer to an
+    UncheckedArray of characters (`ptr UncheckedArray[char]`)
   ]#
-  # Checks if the index is within the bounds of the buffer
-  if index < 0 or index >= buf.len or buf.data == nil:
-    # This case is for out of bounds indexes
-    outPtr = nil
-    outLen = 0'u
+  # First checks if the index is within bounds, otherwise throws an error
+  if (index >= 0) and (index < buffer.len):
+    # Gets the length of the string from the `sizes` array using the index
+    result.len = buffer.sizes[index]
+    # Sets the data pointer to `nil` and only changes it if the string isn't
+    # empty.
+    result.data = nil
+    if result.len > 0:
+      # Gets the pointer to the UncheckedArray from:
+      # 1. Casting to an `uint` the pointer to the data
+      # 2. Adding to the pointer the offset of the data
+      # 3. Casting the result to a pointer
+      # 4. Casting the pointer to an UncheckedArray of characters
+      result.data = cast[ptr UncheckedArray[char]](
+        cast[pointer](
+          cast[uint](buffer.data) + buffer.offsets[index]
+        )
+      )
   else:
-    # This case is for indexes that are within the bounds of the buffer
-    outLen = buf.sizes[index]
-    if outLen > 0'u:
-      outPtr = cast[pointer](cast[uint](buf.data) + buf.offsets[index])
-    else:
-      outPtr = nil
+    raise newException(IndexDefect, "Index out of bounds")
 
-proc getStringCopy(buf: Buffer, index: int): string {.inline.} =
+proc getView(buffer: ptr Buffer, index: int): BufferElementView {.inline.} =
+  result = (buffer[]).getView(index)
+
+proc getString(buffer: Buffer, index: int): string {.inline.} =
   #[
     Returns a string copy of the view from the buffer under the specified
     index.
 
-    Uses `getStringView` to get the view.
+    Uses `getView` to get the view.
   ]#
-  var 
-    strPtr: pointer
-    strLen: uint
-  buf.getStringView(index, strPtr, strLen)
-  if strLen > 0'u and strPtr != nil:
-    result = newString(strLen.int)
-    copyMem(addr result[0], strPtr, strLen.int)
+  var view: BufferElementView = buffer.getView(index)
+  # Checks that there is data inside the given index
+  if (view.len > 0) and (view.data != nil):
+    result = newString(view.len)
+    copyMem(addr result[0], addr view.data[0], view.len)
   else:
     result = ""
+
+proc getString(buffer: ptr Buffer, index: int): string {.inline.} =
+  result = (buffer[]).getString(index)
 
 # =============================================================================
 # PUBLIC API
@@ -132,6 +155,9 @@ proc getStringCopy(buf: Buffer, index: int): string {.inline.} =
 proc len*(buf: Buffer): int {.inline.} =
   ## Returns the number of strings contained within the buffer.
   result = buf.len
+
+proc len*(buffer: ptr Buffer): int {.inline.} =
+  result = (buffer[]).len()
 
 proc createBuffer*(strings: seq[string]): Buffer =
   ## Creates a new `Buffer` object from the provided sequence of strings.
@@ -163,29 +189,40 @@ proc createBuffer*(strings: seq[string]): Buffer =
     # The buffer should be created in it's default state
     discard
 
-iterator items*(buf: Buffer): openArray[char] =
-  for i in 0 ..< buf.len:
-    var 
-      strPtr: pointer
-      strLen: uint
-    buf.getStringView(i, strPtr, strLen)
-    if strLen > 0'u and strPtr != nil:
-      yield toOpenArray(cast[ptr UncheckedArray[char]](strPtr), 0, strLen.int - 1)
-    else:
-      yield "".toOpenArray(0, -1)
+# =============================================================================
+# BASIC ITERATORS AND OPERATORS
+# =============================================================================
 
-proc find*(buf: Buffer, item: string): int {.inline.} =
+iterator items*(buffer: Buffer): BufferElementView =
+  for i in 0 ..< buffer.len:
+    yield buffer.getView(i)
+
+iterator items*(buffer: ptr Buffer): BufferElementView =
+  for i in 0 ..< buffer.len():
+    yield buffer.getView(i)
+
+proc find*(buffer: Buffer, item: string): int {.inline.} =
   result = 0
-  for view in buf:
-    if view == item.toOpenArray(0, item.len()-1):
+  var
+    auxBuffer = (@[item]).createBuffer
+    auxView = auxBuffer.getView(0)
+  for view in buffer:
+    if view == auxView:
       return result
     inc(result)
   return -1
 
-proc contains*(buf: Buffer, item: string): bool {.inline.} =
-  find(buf, item) >= 0
+proc find*(buffer: ptr Buffer, item: string): int {.inline.} =
+  result = (buffer[]).find(item)
 
-proc `[]`*(buf: Buffer, index: int): string =
-  if (index < 0) or (index >= buf.len):
-    raise newException(IndexDefect, "Index out of bounds: " & $index)
-  buf.getStringCopy(index)
+proc contains*(buffer: Buffer, item: string): bool {.inline.} =
+  find(buffer, item) >= 0
+
+proc contains*(buffer: ptr Buffer, item: string): bool {.inline.} =
+  find(buffer, item) >= 0
+
+proc `[]`*(buffer: Buffer, index: int): string =
+  result = buffer.getString(index)
+
+proc `[]`*(buffer: ptr Buffer, index: int): string =
+  result = buffer.getString(index)
