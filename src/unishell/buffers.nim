@@ -77,6 +77,7 @@ proc `=copy`*(dest: var Buffer; src: Buffer) =
     discard
 
 proc `=wasMoved`*(buffer: var Buffer) =
+  # This hook is provided to make sure that the pointers are simply set to `nil`
   buffer.sizes = nil
   buffer.offsets = nil
   buffer.data = nil
