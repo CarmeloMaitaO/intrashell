@@ -336,3 +336,21 @@ proc toSeq*(buffer: Buffer): seq[string] =
   result = newSeqOfCap[string](buffer.len)
   for element in buffer:
     result.add($element)
+
+proc preAllocateBuffer*(buffer: ptr Buffer, len: int, cap: int) =
+  ## Allocates an empty buffer with the given length and capacity
+  buffer.len = len
+  buffer.cap = cap
+  var
+    sizeOfSizes: int = len * sizeof(int)
+    sizeOfOffsets: int = len * sizeof(uint)
+  if len > 0:
+    buffer.sizes = cast[ptr UncheckedArray[int]](alloc0(sizeOfSizes))
+    buffer.offsets = cast[ptr UncheckedArray[uint]](alloc0(sizeOfOffsets))
+  else:
+    buffer.sizes = nil
+    buffer.offsets = nil
+  if cap > 0:
+    buffer.data = alloc0(cap)
+  else:
+    buffer.data = nil

@@ -22,12 +22,23 @@
     finished and the counter for the reference reaches zero.
 
   *THE `RcuTable` OBJECT IS NOT READY TO HANDLE COPIES, SO AVOID DUPLICATING IT*
+
+  Example use:
+
+  ```nim
+  var x: RcuTableRef = newRcuTable[int, string]
+
+  x.modify:
+    x[slot, 0] = "Hello "
+    x[slot, 1] = "World!"
+
+  echo x[0], x[1] # "Hello World!"
+  ```
 ]##
 import std/[
   tables,
   atomics,
-  locks,
-  os
+  locks
 ]
 type
   RcuTable*[K, V] = object

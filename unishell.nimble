@@ -9,6 +9,7 @@ srcDir        = "src"
 # Dependencies
 
 requires "nim >= 2.2.4"
+requires "https://github.com/beef331/wasm3 >= 0.1.1"
 
 before test:
   exec "nim c --app:lib --noMain --mm:orc --define:useMalloc --out:tests/libmodule1.so tests/module1.nim"

@@ -24,7 +24,8 @@
           nim
           nimble
           nph
-          zig
+          clang
+          emscripten
         ]; # buildInputs
       }; # devShells.default
     }; # perSystem
