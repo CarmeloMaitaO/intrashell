@@ -7,7 +7,6 @@ import std/[
   dynlib,
   paths
 ]
-import unishell/rcutable
 
 type
   Unishell* = ref object
