@@ -1,7 +1,11 @@
 ##[ Unishell
 A lightweight framework for dynamically loading and managing nested, concurrent state-machines.
 ]##
-import unishell/rcutable
+import unishell/[
+  rcutable,
+  buffer
+]
+export unishell/buffer
 import std/[
   os,
   dynlib,
@@ -9,23 +13,29 @@ import std/[
 ]
 
 type
-  Unishell* = ref object
-    directory: string
-    registry: newRcuTable[string, Module]
-  UnishellPtr* = ptr Unishell
+  UnishellObj* = object
+    registry*: RcuTableRef[string, Module]
+    pointerToItself*: ptr UnishellObj
+  Unishell* = ref UnishellObj
+  UnishellOperations* = enum
+    LOAD,
+    UNLOAD,
+    UPDATE,
+    ROLLBACK
+  UnishellOperation* = object
+    case kind: UnishellOperation
 
-type
-  ModuleInitProc* = proc (unishell: UnishellPtr) {.nimcall.}
-    ## Procedural interface for module initialization.
-  ModuleDispatchProc* = proc (parameters: varargs[string, `$`]): seq[string] {.nimcall.}
-    ## Procedural interface for module command dispatching.
-  ModuleShutdownProc* = proc () {.nimcall.}
-    ## Procedural interface for module shutdown.
+proc newUnishell(): Unishell =
+  new(result)
+  result.registry = newRcuTable[string, Module]()
+  result.pointerToItself = cast[ptr UnishellObj](result)
 
-proc newUnishell(directory: string, staticModules: varargs[Module]): Unishell =
-  var ushell: Unishell
-  ushell.directory = directory
-  for module in staticModules:
-    loadModule(ushell, module)
-  ushell.flagsAndCounter.store(uint(0b01))
-  return ushell
+proc loadModule(unishell: UnishellObj, modules: varargs[StaticModule]) =
+  modify(unishell.registry):
+    for module in modules:
+      unishell.registry[slot, module.identity] = module
+
+proc loadModule(unishell: UnishellObj, modules: varargs[Path]) =
+  modify(unishell.registry):
+    for module in modules:
+      unishell.registry[slot, module.identity] = module

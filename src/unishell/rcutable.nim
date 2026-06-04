@@ -12,7 +12,7 @@
   specific behaviour is the following:
 
   - Writers: copy the contents of the active table on the inactive table, modify
-    the copy, swap the value of the active index to become the active table,
+    the copy, swap the value of the active index to change the active table,
     and lastly create a new hash table, which reference will now occupy the
     inactive slot.
   - Readers: get the reference of the active table, which increments its counter
