@@ -180,12 +180,6 @@ when defined(unishellDisableDynamicModules):
 else:
   import std/dynlib
 
-  const dynamicModuleExtensions: Array[string] = [
-    "dll",
-    "so",
-    "dylib"
-  ]
-
   type
     DynamicModulePayloadObj* = object
     ##[
@@ -227,20 +221,42 @@ else:
     else:
       result = createBuffer(@[])
 
+  # To refactor: start
+  const dynamicModuleExtensions: Array[string] = [
+    "dll",
+    "so",
+    "dylib"
+  ]
+
   proc loadDynamicModule(path: Path, identity: string, version: Version): DynamicModule =
     var splittedFile = splitFile(path)
     if fileExists(path) and (splittedFile.ext in dynamicModuleExtensions):
       new(result)
       result.identity = identity
       result.version = Version
+      result.payload = new(DynamicModulePayload)
+      result.payload.lib = loadLib($path)
+      result.payload.importedDispatch = cast[ImportedDispatch](
+        result.payload.lib.symAddr("dispatch")
+      )
     else:
       raise newException(ValueError, "Error: loadDynamicModule: the path is not a dynamic library")
+  # To refactor: end
 
   proc `=destroy`*(payload: var DynamicModulePayloadObj) =
     if payload.importedDispatch != nil:
       payload.importedDispatch = nil
     if payload.lib != nil:
       unloadLib(payload.lib)
+
+# =============================================================================
+# WASM BASED MODULES (WIP)
+# =============================================================================
+
+when defined(unishellDisableWasmModules):
+  discard
+else:
+  discard
 
 # =============================================================================
 # COMMON PROCEDURES FOR ALL MODULE TYPES
@@ -257,14 +273,23 @@ proc createModule*(
     importedDispatch: dispatch
   )
 
-proc createModule*(path: Path): Module =
-  var splittedPath = splitFile(path)
-  if fileExists(path):
-    when not defined(unishellDisableDynamicModules):
-      if splittedPath.ext in dynamicModuleExtensions:
-        result = loadDynamicModule(path)
-  else:
-    raise newException(ValueError, "Error: createModule: passed directory instead of file")
+# To refactor: start
+proc createModule*(
+  identity: string,
+  version: Version,
+  path: Path
+): Module =
+  result = nil
+  when not defined(unishellDisableDynamicModules):
+    try:
+      result = loadDynamicModule(path, identity, version)
+    finally:
+      discard
+  when not defined(unishellDisableWasmModules):
+    discard
+  if result == nil:
+    raise newException(ValueError, "Error: createModule: couldn\'t load module")
+# To refactor: end
 
 proc shell*(module: Module, parameters: varargs[string, `$`]): seq[string] {.cdecl.} =
   ##[

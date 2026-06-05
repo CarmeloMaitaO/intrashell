@@ -1,6 +1,9 @@
 ##[ Unishell
-A lightweight framework for dynamically loading and managing nested, concurrent state-machines.
+A lightweight library for dynamically loading and managing nested, concurrent state-machines.
 ]##
+when not defined(gcArc) and not defined(gcOrc) and not defined(gcAtomicArc):
+  {.error: "Unishell requires to be compiled with --mm:arc, --mm:orc or --mm:atomicArc".}
+
 import unishell/[
   rcutable,
   buffer
@@ -17,6 +20,14 @@ type
     registry*: RcuTableRef[string, Module]
     pointerToItself*: ptr UnishellObj
   Unishell* = ref UnishellObj
+
+proc newUnishell(): Unishell =
+  new(result)
+  result.registry = newRcuTable[string, Module]()
+  result.pointerToItself = cast[ptr UnishellObj](result)
+
+# To refactor: start
+type
   UnishellOperations* = enum
     LOAD,
     UNLOAD,
@@ -25,13 +36,9 @@ type
   UnishellOperation* = object
     kind: UnishellOperations
     key: string
+    version: Version
     path: Path
     module: StaticModule
-
-proc newUnishell(): Unishell =
-  new(result)
-  result.registry = newRcuTable[string, Module]()
-  result.pointerToItself = cast[ptr UnishellObj](result)
 
 proc newOperation*(
   kind: UnishellOperations,
@@ -40,9 +47,9 @@ proc newOperation*(
   module: StaticModule
 ): UnishellOperation =
   result.kind = kind
+  result.key = key
   result.path = path
   result.module = module
-  result.key = key
 
 proc processOperation*(unishell: Unishell, operation: UnishellOperation) =
   case operation.kind
@@ -54,3 +61,4 @@ proc processOperation*(unishell: Unishell, operation: UnishellOperation) =
     discard
   of ROLLBACK:
     discard
+# To refactor: end
