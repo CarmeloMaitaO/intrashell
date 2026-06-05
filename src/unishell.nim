@@ -23,19 +23,34 @@ type
     UPDATE,
     ROLLBACK
   UnishellOperation* = object
-    case kind: UnishellOperation
+    kind: UnishellOperations
+    key: string
+    path: Path
+    module: StaticModule
 
 proc newUnishell(): Unishell =
   new(result)
   result.registry = newRcuTable[string, Module]()
   result.pointerToItself = cast[ptr UnishellObj](result)
 
-proc loadModule(unishell: UnishellObj, modules: varargs[StaticModule]) =
-  modify(unishell.registry):
-    for module in modules:
-      unishell.registry[slot, module.identity] = module
+proc newOperation*(
+  kind: UnishellOperations,
+  key: string,
+  path: Path,
+  module: StaticModule
+): UnishellOperation =
+  result.kind = kind
+  result.path = path
+  result.module = module
+  result.key = key
 
-proc loadModule(unishell: UnishellObj, modules: varargs[Path]) =
-  modify(unishell.registry):
-    for module in modules:
-      unishell.registry[slot, module.identity] = module
+proc processOperation*(unishell: Unishell, operation: UnishellOperation) =
+  case operation.kind
+  of LOAD:
+    discard
+  of UNLOAD:
+    discard
+  of UPDATE:
+    discard
+  of ROLLBACK:
+    discard

@@ -179,6 +179,7 @@ when defined(unishellDisableDynamicModules):
   discard
 else:
   import std/dynlib
+
   const dynamicModuleExtensions: Array[string] = [
     "dll",
     "so",
@@ -226,6 +227,15 @@ else:
     else:
       result = createBuffer(@[])
 
+  proc loadDynamicModule(path: Path, identity: string, version: Version): DynamicModule =
+    var splittedFile = splitFile(path)
+    if fileExists(path) and (splittedFile.ext in dynamicModuleExtensions):
+      new(result)
+      result.identity = identity
+      result.version = Version
+    else:
+      raise newException(ValueError, "Error: loadDynamicModule: the path is not a dynamic library")
+
   proc `=destroy`*(payload: var DynamicModulePayloadObj) =
     if payload.importedDispatch != nil:
       payload.importedDispatch = nil
@@ -235,6 +245,26 @@ else:
 # =============================================================================
 # COMMON PROCEDURES FOR ALL MODULE TYPES
 # =============================================================================
+
+proc createModule*(
+  identity: string,
+  version: Version,
+  dispatch: UserSuppliedDispatch
+): Module =
+  result = StaticModule(
+    identity: identity,
+    version: version,
+    importedDispatch: dispatch
+  )
+
+proc createModule*(path: Path): Module =
+  var splittedPath = splitFile(path)
+  if fileExists(path):
+    when not defined(unishellDisableDynamicModules):
+      if splittedPath.ext in dynamicModuleExtensions:
+        result = loadDynamicModule(path)
+  else:
+    raise newException(ValueError, "Error: createModule: passed directory instead of file")
 
 proc shell*(module: Module, parameters: varargs[string, `$`]): seq[string] {.cdecl.} =
   ##[
