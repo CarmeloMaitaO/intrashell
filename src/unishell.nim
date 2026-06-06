@@ -6,7 +6,8 @@ when not defined(gcArc) and not defined(gcOrc) and not defined(gcAtomicArc):
 
 import unishell/[
   rcutable,
-  buffer
+  buffer,
+  module
 ]
 export unishell/buffer
 import std/[
@@ -26,39 +27,57 @@ proc newUnishell(): Unishell =
   result.registry = newRcuTable[string, Module]()
   result.pointerToItself = cast[ptr UnishellObj](result)
 
-# To refactor: start
 type
-  UnishellOperations* = enum
-    LOAD,
-    UNLOAD,
-    UPDATE,
-    ROLLBACK
-  UnishellOperation* = object
-    kind: UnishellOperations
-    key: string
-    version: Version
-    path: Path
-    module: StaticModule
+  UnishellRegistryOperation* = ref object of RootObj
+  UnishellRegistryLoadOperation* = ref object of UnishellRegistryOperation
+    module*: Module
+  UnishellRegistryUnloadOperation* = ref object of UnishellRegistryOperation
+    identity*: string
+  UnishellRegistryUpdateOperation* = ref object of UnishellRegistryOperation
+    module*: Module
+  UnishellRegistryRollbackOperation* = ref object of UnishellRegistryOperation
+    module*: Module
+  UnishellRegistryOperations* = seq[UnishellRegistryOperation]
 
-proc newOperation*(
-  kind: UnishellOperations,
-  key: string,
-  path: Path,
-  module: StaticModule
-): UnishellOperation =
-  result.kind = kind
-  result.key = key
-  result.path = path
+proc newUnishellRegistryLoadOperation*(module: Module): UnishellRegistryLoadOperation =
+  ##[
+    Creates a new `UnishellRegistryLoadOperation`. Example:
+
+    ```nim
+    var operation = newUnishellRegistryLoadOperation(
+      createModule(
+        "someIdentity",
+        Version(1, 0, 0),
+        somePathOrUserSuppliedDispatch
+      )
+    )
+    ```
+  ]##
+  new(result)
+  result.identity = identity
+  result.version = version
   result.module = module
 
-proc processOperation*(unishell: Unishell, operation: UnishellOperation) =
-  case operation.kind
-  of LOAD:
-    discard
-  of UNLOAD:
-    discard
-  of UPDATE:
-    discard
-  of ROLLBACK:
-    discard
-# To refactor: end
+method execute(unishell: Unishell, operation: UnishellRegistryOperation, slot: int) {.base.} =
+  quit "Execute called on base UnishellRegistryOperation!"
+
+method execute(unishell: Unishell, operation: UnishellRegistryLoadOperation, slot: int) =
+  discard
+
+method execute(unishell: Unishell, operation: UnishellRegistryUnloadOperation, slot: int) =
+  discard
+
+method execute(unishell: Unishell, operation: UnishellRegistryUpdateOperation, slot: int) =
+  discard
+
+method execute(unishell: Unishell, operation: UnishellRegistryRollbackOperation, slot: int) =
+  discard
+
+proc processOperations*(unishell: Unishell, operations: UnishellRegistryOperations): seq[string] =
+  unishell.registry.modify:
+    var errors: seq[string]
+    for operation in operations:
+      try:
+        unishell.execute(operation, slot)
+      except CatchableError as e:
+        errors.add(e)

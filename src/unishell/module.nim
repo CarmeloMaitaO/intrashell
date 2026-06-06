@@ -175,8 +175,16 @@ method dispatch*(
 # DYNAMIC/SHARED LIBRARY BASED MODULES
 # =============================================================================
 
+const dynamicModuleExtensions: Array[string] = [
+  "dll",
+  "so",
+  "dylib"
+]
+
+# When this option is enabled, the DynamicModule type doesn't exists, and therefore the loadDynamicModule should return a Module, which is a type that exists
 when defined(unishellDisableDynamicModules):
-  discard
+  proc loadDynamicModule(path: Path, identity: string, version: Version): Module =
+    result = nil
 else:
   import std/dynlib
 
@@ -221,13 +229,6 @@ else:
     else:
       result = createBuffer(@[])
 
-  # To refactor: start
-  const dynamicModuleExtensions: Array[string] = [
-    "dll",
-    "so",
-    "dylib"
-  ]
-
   proc loadDynamicModule(path: Path, identity: string, version: Version): DynamicModule =
     var splittedFile = splitFile(path)
     if fileExists(path) and (splittedFile.ext in dynamicModuleExtensions):
@@ -240,8 +241,7 @@ else:
         result.payload.lib.symAddr("dispatch")
       )
     else:
-      raise newException(ValueError, "Error: loadDynamicModule: the path is not a dynamic library")
-  # To refactor: end
+      result = nil
 
   proc `=destroy`*(payload: var DynamicModulePayloadObj) =
     if payload.importedDispatch != nil:
@@ -253,10 +253,17 @@ else:
 # WASM BASED MODULES (WIP)
 # =============================================================================
 
+const wasmModuleExtensions: Array[string] = [
+  "wasm"
+]
+
+# When this option is enabled, the WasmModule type doesn't exists, and therefore the loadWasmModule should return a Module, which is a type that exists
 when defined(unishellDisableWasmModules):
-  discard
+  proc loadWasmModule(path: Path, identity: string, version: Version): Module =
+    result = nil
 else:
-  discard
+  proc loadWasmModule(path: Path, identity: string, version: Version): Module =
+    result = nil
 
 # =============================================================================
 # COMMON PROCEDURES FOR ALL MODULE TYPES
@@ -273,23 +280,17 @@ proc createModule*(
     importedDispatch: dispatch
   )
 
-# To refactor: start
 proc createModule*(
   identity: string,
   version: Version,
   path: Path
 ): Module =
   result = nil
-  when not defined(unishellDisableDynamicModules):
-    try:
-      result = loadDynamicModule(path, identity, version)
-    finally:
-      discard
-  when not defined(unishellDisableWasmModules):
-    discard
+  result = loadDynamicModule(path, identity, version)
+  if result == nil:
+    result = loadWasmModule(path, identity, version)
   if result == nil:
     raise newException(ValueError, "Error: createModule: couldn\'t load module")
-# To refactor: end
 
 proc shell*(module: Module, parameters: varargs[string, `$`]): seq[string] {.cdecl.} =
   ##[
