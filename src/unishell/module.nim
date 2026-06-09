@@ -12,7 +12,7 @@
   - Dynamic (`DynamicModule`): provided at runtime by dynamic/shared libraries. These don't
     require to be linked at compile-time, as they share the same interface
     and so they can be safely searched and loaded on-demand.
-  - WASM (`WasmModule` WIP): it will be released on V2.0.0 and it will use Wasm3.
+  - WASM (`WasmModule` WIP): it will be released on V2.0.0.
 
   Example of use:
 
@@ -31,11 +31,18 @@
   echo x.shell("Some", "strings")
   ```
 ]##
-import unishell/buffers
+import unishell/buffer
 import std/[
   paths,
+  files,
   strutils
 ]
+
+const
+  INITCOMMAND*: string = "INIT"
+    ## Called on module loading
+  SHUTDOWNCOMMAND*: string = "SHUTDOWN"
+    ## Called on module unloading
 
 type
   UserSuppliedDispatch* = proc (parameters: seq[string]): seq[string]
@@ -64,6 +71,9 @@ type
 method dispatch*(module: Module, input: Buffer): Buffer {.base.} =
   ## Base dispatch method to be overridden by subclasses
   quit "Dispatch called on base Module!"
+
+# Forward declaration to use it within destructors later
+proc moduleShutdown(module: UserSuppliedDispatch) {.raises: [].}
 
 # =============================================================================
 # COMMON TYPES, PROCEDURES AND TEMPLATES FOR COMPILED MODULES
@@ -96,6 +106,19 @@ proc hostsAllocator*(output: ptr Buffer, len: int, cap: int) {.cdecl.} =
     the external module's dispatch method.
   ]##
   preAllocateBuffer(output, len, cap)
+
+# Forward declaration to use it within destructors later
+proc moduleShutdown(module: ImportedDispatch) {.raises: [].}
+
+template unishellQuit*() =
+  ##[
+    A template for freeing all global memory from external modules, based on
+    [this issue](https://github.com/nim-lang/Nim/issues/21403#issuecomment-3738505350).
+    Use it inside the shutdown logic of your external module.
+  ]##
+  NimDestroyGlobals()
+  GC_FullCollect()
+  deallocOsPages()
 
 template dispatchBoilerplate*(userSuppliedProc: UserSuppliedDispatch) =
   ##[
@@ -142,6 +165,9 @@ template dispatchBoilerplate*(userSuppliedProc: UserSuppliedDispatch) =
 # =============================================================================
 
 type
+  StaticModulePayloadObj* = object
+    importedDispatch*: UserSuppliedDispatch
+  StaticModulePayload* = ref StaticModulePayloadObj
   StaticModule* = ref object of Module
     ##[
       Object that represents a module from the main binary. This is used to
@@ -163,19 +189,33 @@ type
       )
       ```
     ]##
-    importedDispatch*: UserSuppliedDispatch
+    payload: StaticModulePayload
+
+proc `=destroy`*(payload: var StaticModulePayloadObj) =
+  if payload.importedDispatch != nil:
+    payload.importedDispatch.moduleShutdown()
+    payload.importedDispatch = nil
+
+proc loadStaticModule(identity: string, version: Version, importedDispatch: UserSuppliedDispatch): StaticModule =
+  new(result)
+  result.identity = identity
+  result.version = version
+  result.payload = new(StaticModulePayload)
+  result.payload.importedDispatch = importedDispatch
 
 method dispatch*(
   module: StaticModule,
   input: Buffer
 ): Buffer =
-  result = createBuffer(module.importedDispatch(input.toSeq()))
+  result = createBuffer(
+    module.payload.importedDispatch(input.toSeq())
+  )
 
 # =============================================================================
 # DYNAMIC/SHARED LIBRARY BASED MODULES
 # =============================================================================
 
-const dynamicModuleExtensions: Array[string] = [
+const dynamicModuleExtensions = [
   "dll",
   "so",
   "dylib"
@@ -190,15 +230,15 @@ else:
 
   type
     DynamicModulePayloadObj* = object
-    ##[
-      Holds the actual pointers to the external module and it's procedure. It is
-      declared as it's own object to facilitate the implementation of a custom
-      destructor
-    ]##
-      lib*: LibHandle
       ##[
-        Handle for the dynamic library.
+        Holds the actual pointers to the external module and it's procedure. It is
+        declared as it's own object to facilitate the implementation of a custom
+        destructor
       ]##
+      lib*: LibHandle
+        ##[
+          Handle for the dynamic library.
+        ]##
       importedDispatch*: ImportedDispatch
     DynamicModulePayload* = ref DynamicModulePayloadObj
     DynamicModule* = ref object of Module
@@ -213,6 +253,13 @@ else:
         that corresponds to the currently loaded module.
       ]##
       payload*: DynamicModulePayload 
+
+  proc `=destroy`*(payload: var DynamicModulePayloadObj) =
+    if payload.importedDispatch != nil:
+      payload.importedDispatch.moduleShutdown()
+      payload.importedDispatch = nil
+    if payload.lib != nil:
+      unloadLib(payload.lib)
 
   method dispatch*(
     module: DynamicModule,
@@ -234,7 +281,7 @@ else:
     if fileExists(path) and (splittedFile.ext in dynamicModuleExtensions):
       new(result)
       result.identity = identity
-      result.version = Version
+      result.version = version
       result.payload = new(DynamicModulePayload)
       result.payload.lib = loadLib($path)
       result.payload.importedDispatch = cast[ImportedDispatch](
@@ -243,17 +290,11 @@ else:
     else:
       result = nil
 
-  proc `=destroy`*(payload: var DynamicModulePayloadObj) =
-    if payload.importedDispatch != nil:
-      payload.importedDispatch = nil
-    if payload.lib != nil:
-      unloadLib(payload.lib)
-
 # =============================================================================
 # WASM BASED MODULES (WIP)
 # =============================================================================
 
-const wasmModuleExtensions: Array[string] = [
+const wasmModuleExtensions = [
   "wasm"
 ]
 
@@ -263,34 +304,15 @@ when defined(unishellDisableWasmModules):
     result = nil
 else:
   proc loadWasmModule(path: Path, identity: string, version: Version): Module =
-    result = nil
+    var splittedFile = splitFile(path)
+    if fileExists(path) and (splittedFile.ext in wasmModuleExtensions):
+      result = nil
+    else:
+      result = nil
 
 # =============================================================================
-# COMMON PROCEDURES FOR ALL MODULE TYPES
+# COMMON TYPES AND PROCEDURES FOR ALL MODULE TYPES
 # =============================================================================
-
-proc createModule*(
-  identity: string,
-  version: Version,
-  dispatch: UserSuppliedDispatch
-): Module =
-  result = StaticModule(
-    identity: identity,
-    version: version,
-    importedDispatch: dispatch
-  )
-
-proc createModule*(
-  identity: string,
-  version: Version,
-  path: Path
-): Module =
-  result = nil
-  result = loadDynamicModule(path, identity, version)
-  if result == nil:
-    result = loadWasmModule(path, identity, version)
-  if result == nil:
-    raise newException(ValueError, "Error: createModule: couldn\'t load module")
 
 proc shell*(module: Module, parameters: varargs[string, `$`]): seq[string] {.cdecl.} =
   ##[
@@ -301,54 +323,188 @@ proc shell*(module: Module, parameters: varargs[string, `$`]): seq[string] {.cde
     ```
   ]##
   result = toSeq(module.dispatch(createBuffer(@parameters)))
+
+proc moduleInit(module: Module) =
+  try:
+    discard module.shell(INITCOMMAND)
+  finally:
+    discard
+
+proc moduleShutdown(module: UserSuppliedDispatch) {.raises: [].} =
+  var input: seq[string] = @[SHUTDOWNCOMMAND]
+  try:
+    discard module(input)
+  except Exception:
+    discard
+  finally:
+    discard
+
+proc moduleShutdown(module: ImportedDispatch) {.raises: [].} =
+  var
+    input: Buffer = createBuffer(@[SHUTDOWNCOMMAND])
+    output: Buffer
+  try:
+    module(
+      addr input,
+      addr output,
+      hostsAllocator
+    )
+  except Exception:
+    discard
+  finally:
+    discard
+
+type
+  ModuleDescription* = ref object of RootObj
+    identity*: string
+    version*: Version
+  StaticModuleDescription* = ref object of ModuleDescription
+    dispatch*: UserSuppliedDispatch
+  ExternalModuleDescription* = ref object of ModuleDescription
+    path*: Path
+
+proc newModuleDescription*(
+  identity: string,
+  version: Version,
+  dispatch: UserSuppliedDispatch
+): StaticModuleDescription =
+  new(result)
+  result.identity = identity
+  result.version = version
+  result.dispatch = dispatch
+
+proc newModuleDescription*(
+  identity: string,
+  version: Version,
+  path: Path
+): ExternalModuleDescription =
+  new(result)
+  result.identity = identity
+  result.version = version
+  result.path = path
   
+method loadModule*(description: ModuleDescription): Module {.base.} =
+  ## Base loadModule method to be overridden by subclasses
+  quit "LoadModule called on base ModuleDescription!"
+
+method loadModule*(description: StaticModuleDescription): Module =
+  result = loadStaticModule(
+    description.identity,
+    description.version,
+    description.dispatch
+  )
+  result.moduleInit()
+
+method loadModule*(description: ExternalModuleDescription): Module =
+  result = nil
+  result = loadDynamicModule(
+    description.path,
+    description.identity,
+    description.version
+  )
+  if result == nil:
+    result = loadWasmModule(
+      description.path,
+      description.identity,
+      description.version
+    )
+  if result == nil:
+    raise newException(ValueError, "Error: createModule: couldn\'t load module")
+  else:
+    result.moduleInit()
+  
+  
+proc `>`*(a, b: Version): bool =
+  ## Compares two semantic versions. Returns true if `a` is a newer version than `b`.
+  if a.major != b.major:
+    return a.major > b.major
+  if a.minor != b.minor:
+    return a.minor > b.minor
+  return a.patch > b.patch
+
 proc `>`*(a, b: Module): bool =
   ## Compares two modules based on their semantic version. Returns true if `a` is a newer version than `b`.
-  if a.version.major != b.version.major:
-    return a.version.major > b.version.major
-  if a.version.minor != b.version.minor:
-    return a.version.minor > b.version.minor
-  return a.version.patch > b.version.patch
+  if a.version > b.version:
+    return true
+  else:
+    return false
+  
+proc `<`*(a, b: Version): bool =
+  ## Compares two semantic versions. Returns true if `a` is an older version than `b`.
+  if a.major != b.major:
+    return a.major < b.major
+  if a.minor != b.minor:
+    return a.minor < b.minor
+  return a.patch < b.patch
   
 proc `<`*(a, b: Module): bool =
   ## Compares two modules based on their semantic version. Returns true if `a` is an older version than `b`.
-  if a.version.major != b.version.major:
-    return a.version.major < b.version.major
-  if a.version.minor != b.version.minor:
-    return a.version.minor < b.version.minor
-  return a.version.patch < b.version.patch
+  if a.version < b.version:
+    return true
+  else:
+    return false
+  
+proc `==`*(a, b: Version): bool =
+  ## Compares two semantic versions. Returns true if `a` and `b` versions are equal.
+  if a.major != b.major:
+    return false
+  if a.minor != b.minor:
+    return false
+  if a.patch != b.patch:
+    return false
+  return true
   
 proc `==`*(a, b: Module): bool =
   ## Compares two modules based on their semantic version. Returns true if `a` and `b` versions are equal.
-  if a.version.major != b.version.major:
+  if a.version == b.version:
+    return true
+  else:
     return false
-  if a.version.minor != b.version.minor:
-    return false
-  if a.version.patch != b.version.patch:
-    return false
-  return true
+
+proc `!=`*(a, b: Version): bool =
+  ## Compares two semantic versions. Returns true if `a` and `b` have different versions.
+  if a.major != b.major:
+    return true
+  if a.minor != b.minor:
+    return true
+  if a.patch != b.patch:
+    return true
+  return false
 
 proc `!=`*(a, b: Module): bool =
   ## Compares two modules based on their semantic version. Returns true if `a` and `b` have different versions.
-  if a.version.major != b.version.major:
+  if a.version != b.version:
     return true
-  if a.version.minor != b.version.minor:
+  else:
+    return false
+
+proc `>=`*(a, b: Version): bool =
+  ## Compares two semantic versions. Returns true if `a` is an equal or newer version than `b`.
+  if (a > b) or (a == b):
     return true
-  if a.version.patch != b.version.patch:
-    return true
-  return false
+  else:
+    return false
 
 proc `>=`*(a, b: Module): bool =
   ## Compares two modules based on their semantic version. Returns true if `a` is an equal or newer version than `b`.
   if (a > b) or (a == b):
     return true
-  return false
+  else:
+    return false
+
+proc `<=`*(a, b: Version): bool =
+  ## Compares two semantic versions. Returns true if `a` is an equal or older version than `b`.
+  if (a < b) or (a == b):
+    return true
+  else:
+    return false
 
 proc `<=`*(a, b: Module): bool =
   ## Compares two modules based on their semantic version. Returns true if `a` is an equal or older version than `b`.
   if (a < b) or (a == b):
     return true
-  return false
+  else:
+    return false
 
 proc castPointerToString*(p: pointer): string =
   ##[
@@ -373,4 +529,3 @@ proc castStringToPointer*(p: string): pointer =
     ```
   ]##
   return cast[pointer](p.parseUInt)
-

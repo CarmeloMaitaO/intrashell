@@ -2,8 +2,8 @@
   description = "Nim-centric development environment";
 
   inputs = {
-    # Latest commit in the branch nixos-25.11
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
+    # Latest commit in the branch nixos-26.05
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
     # Flake-parts
     flake-parts.url = "github:hercules-ci/flake-parts";
   };
@@ -24,7 +24,6 @@
           nim
           nimble
           nph
-          clang
           emscripten
         ]; # buildInputs
       }; # devShells.default
