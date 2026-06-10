@@ -28,177 +28,67 @@ proc shell*(unishell: Unishell, parameters: varargs[string, `$`]): seq[string] {
   return unishell.registry[parameters[0]].shell(parameters[1..high(parameters)])
 
 type
-  UnishellOperation* = ref object of RootObj
-  UnishellLoadOperation* = ref object of UnishellOperation
-    description: ModuleDescription
-  UnishellUnloadOperation* = ref object of UnishellOperation
+  UnishellOperationType* = enum
+    LOAD,
+    UNLOAD,
+    UPDATE,
+    ROLLBACK
+  UnishellOperation* = ref object
+    case kind: UnishellOperationType
+    of UNLOAD: identity: string
+    of LOAD, UPDATE, ROLLBACK: description: ModuleDescription
+
+proc newOperation*(
+  kind: UnishellOperationType,
+  identity: string
+): UnishellOperation {.raises: [ValueError].} =
+  if kind != UNLOAD:
+    raise newException(ValueError, "To LOAD, UPDATE or ROLLBACK a module, you need to give a proper ModuleDescription")
+  else:
+    result = UnishellOperation(kind, identity)
+
+proc newOperation*(
+  kind: UnishellOperationType,
+  description: ModuleDescription
+): UnishellOperation {.raises: [].} =
+  if kind == UNLOAD:
+    result = UnishellOperation(kind, description.identity)
+  else:
+    result = UnishellOperation(kind, description)
+
+proc execute(unishell: Unishell, operation: UnishellOperation, slot: int) =
+  var
     identity: string
-  UnishellUpdateOperation* = ref object of UnishellOperation
-    description: ModuleDescription
-  UnishellRollbackOperation* = ref object of UnishellOperation
-    description: ModuleDescription
-  UnishellOperations* = seq[UnishellOperation]
-
-proc newLoadOperation*(
-  identity: string,
-  version: Version,
-  dispatch: UserSuppliedDispatch
-): UnishellLoadOperation =
-  ##[
-    Creates a new `UnishellLoadOperation`. Example:
-
-    ```nim
-    var operation = newLoadOperation(
-      "someIdentity",
-      Version(1, 0, 0),
-      someUserSuppliedDispatch
-    )
-    ```
-  ]##
-  new(result)
-  result.description = newModuleDescription(identity, version, dispatch)
-
-proc newLoadOperation*(
-  identity: string,
-  version: Version,
-  path: Path
-): UnishellLoadOperation =
-  ##[
-    Creates a new `UnishellLoadOperation`. Example:
-
-    ```nim
-    var operation = newLoadOperation(
-      "someIdentity",
-      Version(1, 0, 0),
-      somePath
-    )
-    ```
-  ]##
-  new(result)
-  result.description = newModuleDescription(identity, version, path)
-  
-proc newUnloadOperation*(identity: string): UnishellUnloadOperation =
-  ##[
-    Creates a new `UnishellUnloadOperation`. Example:
-
-    ```nim
-    var operation = newUnloadOperation("someIdentity")
-    ```
-  ]##
-  new(result)
-  result.identity = identity
-
-proc newUpdateOperation*(
-  identity: string,
-  version: Version,
-  dispatch: UserSuppliedDispatch
-): UnishellUpdateOperation =
-  ##[
-    Creates a new `UnishellUpdateOperation`. Example:
-
-    ```nim
-    var operation = newUpdateOperation(
-      "someIdentity",
-      Version(1, 0, 0),
-      someUserSuppliedDispatch
-    )
-    ```
-  ]##
-  new(result)
-  result.description = newModuleDescription(identity, version, dispatch)
-
-proc newUpdateOperation*(
-  identity: string,
-  version: Version,
-  path: Path
-): UnishellUpdateOperation =
-  ##[
-    Creates a new `UnishellUpdateOperation`. Example:
-
-    ```nim
-    var operation = newUpdateOperation(
-      "someIdentity",
-      Version(1, 0, 0),
-      somePath
-    )
-    ```
-  ]##
-  new(result)
-  result.description = newModuleDescription(identity, version, path)
-
-proc newRollbackOperation*(
-  identity: string,
-  version: Version,
-  dispatch: UserSuppliedDispatch
-): UnishellRollbackOperation =
-  ##[
-    Creates a new `UnishellRollbackOperation`. Example:
-
-    ```nim
-    var operation = newRollbackOperation(
-      "someIdentity",
-      Version(1, 0, 0),
-      someUserSuppliedDispatch
-    )
-    ```
-  ]##
-  new(result)
-  result.description = newModuleDescription(identity, version, dispatch)
-
-proc newRollbackOperation*(
-  identity: string,
-  version: Version,
-  path: Path
-): UnishellRollbackOperation =
-  ##[
-    Creates a new `UnishellRollbackOperation`. Example:
-
-    ```nim
-    var operation = newRollbackOperation(
-      "someIdentity",
-      Version(1, 0, 0),
-      somePath
-    )
-    ```
-  ]##
-  new(result)
-  result.description = newModuleDescription(identity, version, path)
-
-method execute(operation: UnishellOperation, unishell: Unishell, slot: int) {.base.} =
-  quit "Execute called on base UnishellOperation!"
-
-method execute(operation: UnishellLoadOperation, unishell: Unishell, slot: int) =
-  var
+    versionRegistry: Version
+    versionOperation: Version
+    dispatch: UserSuppliedDispatch
+    path: Path
+  case operation.kind
+  of LOAD:
     identity = operation.description.identity
-  unishell.registry[slot, identity] = loadModule(operation.description)
-
-method execute(operation: UnishellUnloadOperation, unishell: Unishell, slot: int) =
-  var
+    unishell.registry[slot, identity] = loadModule(operation.description)
+  of UNLOAD:
     identity = operation.identity
-  unishell.registry.del(slot, identity)
-
-method execute(operation: UnishellUpdateOperation, unishell: Unishell, slot: int) =
-  var
+    unishell.registry.del(slot, identity)
+  of UPDATE:
     identity = operation.description.identity
-    versionRegistry = unishell.registry[identity].version
     versionOperation = operation.description.version
-  if versionRegistry < versionOperation:
-    unishell.registry[slot, identity] = loadModule(operation.description)
-
-method execute(operation: UnishellRollbackOperation, unishell: Unishell, slot: int) =
-  var
+    versionRegistry = unishell.registry[identity].version
+    if versionRegistry < versionOperation:
+      unishell.registry[slot, identity] = loadModule(operation.description)
+  of ROLLBACK:
     identity = operation.description.identity
-    versionRegistry = unishell.registry[identity].version
     versionOperation = operation.description.version
-  if versionRegistry > versionOperation:
-    unishell.registry[slot, identity] = loadModule(operation.description)
+    versionRegistry = unishell.registry[identity].version
+    if versionRegistry > versionOperation:
+      unishell.registry[slot, identity] = loadModule(operation.description)
 
 proc processOperations*(unishell: Unishell, operations: UnishellOperations): seq[string] =
   var errors: seq[string]
   unishell.registry.modify:
     for operation in operations:
       try:
-        operation.execute(unishell, slot)
+        unishell.execute(operation, slot)
       except CatchableError as e:
         errors.add(e.msg)
   return errors

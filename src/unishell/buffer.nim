@@ -18,6 +18,10 @@
   you are working in a multi-threaded environment, make sure that the logic
   that handles the object is single-threaded or is wrapped inside a lock/mutex.
 
+  *THIS OBJECT IS MEANT TO BE LANGUAGE INDEPENDENT*. That way, No matter the
+  language the modules or the main binary are written in, they will
+  communicate without problems.
+
   Operators, iterators and procedures are provided to give the user the
   necessary calls to be able to handle the `Buffer` and `BufferElementView` as
   if they were a simple `seq[string]`. The following procedures enable the use
