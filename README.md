@@ -104,3 +104,7 @@ proc moduleFactory*(): ModuleInstance {.exportc: "moduleFactory", dynlib.} =
 
 Unishell uses an atomic unsigned integer to hold both a counter of read
 operations and two flags for the current state of the object
+
+## Notes
+
+- Compile dynamic modules with `-d:useMalloc --app:lib` and, either `--gc:orc`, `--gc:arc` or `--gc:atomicArc`

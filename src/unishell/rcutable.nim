@@ -96,6 +96,11 @@ proc `[]`*[K, V](table: RcuTableRef[K, V], key: K): V =
   var targetTable: TableRef[K, V] = table.slots[table.getActiveSlot()]
   result = targetTable[key]
 
+proc `[]`*[K, V](table: RcuTableRef[K, V], slot: int, key: K): V =
+  ## Returns the value of the given key of the selected table
+  var targetTable: TableRef[K, V] = table.slots[slot]
+  result = targetTable[key]
+
 proc `[]=`*[K, V](table: RcuTableRef[K, V], slot: int, key: K, value: sink V) =
   ## Sets the value of the given key of the selected table
   var targetTable: TableRef[K, V] = table.slots[slot]
