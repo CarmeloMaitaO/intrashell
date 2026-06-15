@@ -19,11 +19,11 @@
   that handles the object is single-threaded or is wrapped inside a lock/mutex.
 
   *THIS OBJECT IS MEANT TO BE LANGUAGE INDEPENDENT*. That way, No matter the
-  language the modules or the main binary are written in, they will
+  language the modules or the main binary are written in, they will be able to
   communicate without problems.
 
   Operators, iterators and procedures are provided to give the user the
-  necessary calls to be able to handle the `Buffer` and `BufferElementView` as
+  necessary calls to be able to handle the `Buffer` and `DataView` as
   if they were a simple `seq[string]`. The following procedures enable the use
   of:
 
@@ -79,7 +79,7 @@ type
   DataView* = object
     data: Data
     len: Natural
-  Offsets = ptr UncheckedArray[uint]
+  Offsets = ptr UncheckedArray[int]
   Sizes = ptr UncheckedArray[int]
   Buffer* = object
     data: Data       ## Single block of raw concatenated string data
@@ -93,77 +93,67 @@ type
 # AUXILIARY PROCEDURES
 # =============================================================================
 
-proc allocateSizes(dest: Sizes, size: Natural) {.inline.} =
-  dest = cast[Sizes](hostAllocator(size, ALLOC))
+proc allocate[T: Data|Offsets|Sizes](dest: T, len: Natural) {.inline.} =
+  when not (T is Data):
+    var totalLen: int = len * sizeof(int)
+  else:
+    var totalLen: int = len
+  dest = cast[T](hostAllocator(totalLen, ALLOC))
 
-proc allocateSizes(dest: Sizes, allocator: HostAllocator, size: Natural) {.inline.} =
-  dest = cast[Sizes](allocator(size, ALLOC))
+proc allocate[T: Data|Offsets|Sizes](dest: T, allocator: HostAllocator, len: Natural) {.inline.} =
+  when not (T is Data):
+    var totalLen: int = len * sizeof(int)
+  else:
+    var totalLen: int = len
+  dest = cast[T](allocator(totalLen, ALLOC))
 
-proc deallocSizes(dest: Sizes) {.inline.} =
-  hostAllocator(dest, DEALLOC)
+proc deallocate[T: Data|Offsets|Sizes](dest: T) {.inline.} =
+  dest = hostAllocator(dest, DEALLOC)
 
-proc deallocSizes(dest: Sizes, allocator: HostAllocator) {.inline.} =
-  allocator(dest, DEALLOC)
+proc deallocate[T: Data|Offsets|Sizes](dest: T, allocator: HostAllocator) {.inline.} =
+  dest = allocator(dest, DEALLOC)
 
-proc copySizes(dest: Sizes, src: Sizes, size: Natural) {.inline.} =
-  if (src != nil) and (size > 0) and (src != dest):
-    dest = hostAllocator(dest, size, DEALLOCTOALLOC)
-    copyMem(dest, src, size)
+proc overwrite[T: Data|Offsets|Sizes](dest: T, src: T, len: Natural) {.inline.} =
+  when not (T is Data):
+    var totalLen: int = len * sizeof(int)
+  else:
+    var totalLen: int = len
+  if (src != dest):
+    if (src != nil) and (len > 0):
+      dest = hostAllocator(dest, totalLen, DEALLOCTOALLOC)
+      copyMem(dest, src, totalLen)
+    else:
+      deallocate(dest)
 
-proc copySizes(dest: Sizes, allocator: HostAllocator, src: Sizes, size: Natural) {.inline.} =
-  if (src != nil) and (size > 0) and (src != dest):
-    dest = allocator(dest, size, DEALLOCTOALLOC)
-    copyMem(dest, src, size)
+proc overwrite[T: Data|Offsets|Sizes](dest: T, allocator: HostAllocator, src: T, len: Natural) {.inline.} =
+  when not (T is Data):
+    var totalLen: int = len * sizeof(int)
+  else:
+    var totalLen: int = len
+  if (src != dest):
+    if (src != nil) and (len > 0):
+      dest = allocator(dest, totalLen, DEALLOCTOALLOC)
+      copyMem(dest, src, totalLen)
+    else:
+      deallocate(dest, allocator)
 
-proc assignToSizes(dest: Sizes, index: Natural, value: Natural) {.inline.} =
-  dest[index] = value
+proc copy[T: Data|Offsets|Sizes](dest: T, src: T, len: Natural) {.inline.} =
+  when not (T is Data):
+    var totalLen: int = len * sizeof(int)
+  else:
+    var totalLen: int = len
+  if (src != nil) and (len > 0):
+    dest = hostAllocator(dest, totalLen, ZEROMEM)
+    copyMem(dest, src, totalLen)
 
-proc allocateOffsets(dest: Offsets, size: Natural) {.inline.} =
-  dest = cast[Offsets](hostAllocator(size, ALLOC))
-
-proc allocateOffsets(dest: Offsets, allocator: HostAllocator, size: Natural) {.inline.} =
-  dest = cast[Offsets](allocator(size, ALLOC))
-
-proc deallocOffsets(dest: Offsets) {.inline.} =
-  hostAllocator(dest, DEALLOC)
-
-proc deallocOffsets(dest: Offsets, allocator: HostAllocator) {.inline.} =
-  allocator(dest, DEALLOC)
-
-proc copyOffsets(dest: Offsets, src: Offsets, size: Natural) {.inline.} =
-  if (src != nil) and (size > 0) and (src != dest):
-    dest = hostAllocator(dest, size, DEALLOCTOALLOC)
-    copyMem(dest, src, size)
-
-proc copyOffsets(dest: Offsets, allocator: HostAllocator, src: Offsets, size: Natural) {.inline.} =
-  if (src != nil) and (size > 0) and (src != dest):
-    dest = allocator(dest, size, DEALLOCTOALLOC)
-    copyMem(dest, src, size)
-
-proc assignToOffsets(dest: Offsets, index: Natural, value: Natural) {.inline.} =
-  dest[index] = value
-
-proc allocateData(dest: Data, size: Natural) {.inline.} =
-  dest = cast[Data](hostAllocator(size, ALLOC))
-
-proc allocateData(dest: Data, allocator: HostAllocator, size: Natural) {.inline.} =
-  dest = cast[Data](allocator(size, ALLOC))
-
-proc deallocData(dest: Data) {.inline.} =
-  hostAllocator(dest, DEALLOC)
-
-proc deallocData(dest: Data, allocator: HostAllocator) {.inline.} =
-  allocator(dest, DEALLOC)
-
-proc copyData(dest: Data, src: Data, size: Natural) {.inline.} =
-  if (src != nil) and (size > 0) and (src != dest):
-    dest = hostAllocator(dest, size, DEALLOCTOALLOC)
-    copyMem(dest, src, size)
-
-proc copyData(dest: Data, allocator: HostAllocator, src: Data, size: Natural) {.inline.} =
-  if (src != nil) and (size > 0) and (src != dest):
-    dest = allocator(dest, size, DEALLOCTOALLOC)
-    copyMem(dest, src, size)
+proc copy[T: Data|Offsets|Sizes](dest: T, allocator: HostAllocator, src: T, len: Natural) {.inline.} =
+  when not (T is Data):
+    var totalLen: int = len * sizeof(int)
+  else:
+    var totalLen: int = len
+  if (src != nil) and (len > 0):
+    dest = allocator(dest, totalLen, ZEROMEM)
+    copyMem(dest, src, totalLen)
 
 proc getDataView(src: Data, start, end: Natural): DataView =
   return DataView(
@@ -171,74 +161,76 @@ proc getDataView(src: Data, start, end: Natural): DataView =
     len: end
   )
 
-proc assignToDataView(dest: var DataView, src: openArray[char]) =
-  if src.len() <= dest.len:
-    dest.data = hostAllocator(dest.data, dest.len, ZEROMEM)
-    copyData(dest.data, cast[Data](src), src.len())
+proc getDataView(src: Buffer, index: Natural): DataView =
+  return getDataView(
+    src.data,
+    src.offsets[index],
+    src.sizes[index] - 1
+  )
 
-proc assignToDataView(dest: var DataView, src: string) =
-  assignToDataView(dest, src.toOpenArray(src.low(), src.high()))
+proc toDataView(arr: openArray[char]): DataView =
+  return DataView(
+    data: cast[Data](addr arr),
+    len: arr.len()
+  )
+
+proc toDataView(str: string): DataView =
+  return toDataview(
+    str.toOpenArray(
+      str.low(),
+      str.high()
+    )
+  )
+
+proc assignTo[T: DataView|Offsets|Sizes; V: Natural|openArray[char]|string](dest: T, value: V, index: Natural = 0) {.inline, raises: [ValueError].} =
+  when (not (T is DataView)) and (V is Natural):
+    dest[index] = value
+  elif (T is DataView) and (V is openArray[char]):
+    if src.len() <= dest.len:
+      copy(dest.data, (value.toDataView()).data, value.len())
+    else:
+      raise newException(ValueError, "Value is bigger than container")
+  elif (T is DataView) and (V is string):
+    if src.len() <= dest.len:
+      copy(dest.data, (value.toDataView()).data, value.len())
+    else:
+      raise newException(ValueError, "Value is bigger than container")
+  else:
+    raise newException(ValueError, "The combination of type and value is not valid")
+
+proc assignTo[T: DataView|Offsets|Sizes; V: Natural|openArray[char]|string](dest: T, allocator: HostAllocator, value: V, index: Natural = 0) {.inline, raises: [ValueError].} =
+  when (not (T is DataView)) and (V is Natural):
+    dest[index] = value
+  elif (T is DataView) and (V is openArray[char]):
+    if src.len() <= dest.len:
+      copy(dest.data, allocator, (value.toDataView()).data, value.len())
+    else:
+      raise newException(ValueError, "Value is bigger than container")
+  elif (T is DataView) and (V is string):
+    if src.len() <= dest.len:
+      copy(dest.data, allocator, (value.toDataView()).data, value.len())
+    else:
+      raise newException(ValueError, "Value is bigger than container")
+  else:
+    raise newException(ValueError, "The combination of type and value is not valid")
 
 # =============================================================================
 # LIFETIME MANAGEMENT (Automatic Destructors)
 # =============================================================================
 
-proc freeBuffer(buf: var Buffer) =
-  #[
-    Deallocates the memory of a `Buffer` object.
-
-    This is a helper procedure used in the custom lifetime-tracking hooks
-    declared for the `Buffer` object
-  ]#
-  if buf.sizes != nil: dealloc(buf.sizes)
-  if buf.offsets != nil: dealloc(buf.offsets)
-  if buf.data != nil: dealloc(buf.data)
-  buf.sizes = nil
-  buf.offsets = nil
-  buf.data = nil
+proc `=destroy`*(buf: var Buffer) =
+  deallocate(buf.data)
+  deallocate(buf.sizes)
+  deallocate(buf.offsets)
   buf.len = 0
   buf.cap = 0
 
-proc `=destroy`*(buf: var Buffer) =
-  buf.freeBuffer()
-
 proc `=copy`*(dest: var Buffer; src: Buffer) =
-  # Auxiliary variables for the sizes to allocate and its pointers
-  var
-    sizeOfSizes: int = src.len * sizeof(int) # size of `sizes`
-    sizeOfOffsets: int = src.len * sizeof(uint) # size of `offsets`
-  if dest.data != src.data:
-    #[
-      This case is for performing the actual copy.
-      It starts by destroying the data in the destination and
-      copying the values of the primitive fields 
-    ]#
-    dest.freeBuffer()
-    dest.len = src.len
-    dest.cap = src.cap
-    #[
-      Then, if the source has any data (strings), a copy of it's
-      content is performed
-    ]#
-    if src.len > 0:
-      dest.sizes = cast[ptr UncheckedArray[int]](alloc(sizeOfSizes))
-      dest.offsets = cast[ptr UncheckedArray[uint]](alloc(sizeOfOffsets))
-      copyMem(dest.sizes, src.sizes, sizeOfSizes)
-      copyMem(dest.offsets, src.offsets, sizeOfOffsets)
-    #[
-      While the following check may seem redundant, it covers the case in which
-      the buffer only has empty strings (`""`). In such case, the copy of the
-      data is not performed, and its value remains as `nil`
-    ]#
-    if src.cap > 0:
-      dest.data = cast[ptr UncheckedArray[char]](alloc(src.cap))
-      copyMem(dest.data, src.data, src.cap)
-    else:
-      dest.data = nil
-  else:
-    # This case is for self-assigments.
-    # They should be ignored
-    discard
+  dest.cap = src.cap
+  dest.len = src.len
+  overwrite(dest.sizes, src.sizes, src.len)
+  overwrite(dest.offsets, src.offsets, src.len)
+  overwrite(dest.data, src.data, src.cap)
 
 proc `=wasMoved`*(buffer: var Buffer) =
   # This hook is provided to make sure that the pointers are simply set to `nil`
@@ -249,37 +241,9 @@ proc `=wasMoved`*(buffer: var Buffer) =
   buffer.cap = 0
 
 # =============================================================================
-# INTERNAL HELPERS
-# =============================================================================
-
-proc getView(buffer: Buffer, index: int): BufferElementView {.inline.} =
-  #[
-    Helper procedure that provides direct access to the string inside the
-    buffer under the specified index.
-
-    It achieves this by casting a pointer to the data, to a pointer to an
-    UncheckedArray of characters (`ptr UncheckedArray[char]`)
-  ]#
-  # First checks if the index is within bounds, otherwise throws an error
-  if (index >= 0) and (index < buffer.len):
-    # Gets the length of the string from the `sizes` array using the index
-    result.len = buffer.sizes[index]
-    # Sets the data pointer to `nil` and only changes it if the string isn't
-    # empty.
-    result.data = nil
-    if result.len > 0:
-      # Gets the pointer to the UncheckedArray from the sum of the base
-      # pointer of `data` and the `offset` fields
-      result.data = cast[ptr UncheckedArray[char]](
-        addr buffer.data[buffer.offsets[index]]
-      )
-  else:
-    raise newException(IndexDefect, "Index out of bounds")
-
-# =============================================================================
 # CONSTRUCTOR (PUBLIC API)
 # =============================================================================
-# 
+ 
 proc createBuffer*(strings: seq[string]): Buffer =
   ##[
     Creates a new `Buffer` object from the provided sequence of strings. Example:
@@ -291,69 +255,57 @@ proc createBuffer*(strings: seq[string]): Buffer =
     ```
   ]##
   result.len = strings.len()
-  # Auxiliary variables for the sizes to allocate and its pointers
-  var
-    sizeOfSizes: int = result.len * sizeof(int) # size of `sizes`
-    sizeOfOffsets: int = result.len * sizeof(uint) # size of `offsets`
-    sizeOfData: int = 0                            # size of `data`
-    dataAddress: uint = 0                          # pointer to `data`
-    elementOffset: uint = 0                        # offset of an element in `data`
-    elementAddress: uint = 0                       # pointer to an element in `data`
-  # Checks whether the sequence is empty or not
-  if result.len != 0:
-    # This is the case for a sequence that isn't empty
-    # Allocates the memory for the metadata
-    result.sizes = cast[ptr UncheckedArray[int]](alloc0(sizeOfSizes))
-    result.offsets = cast[ptr UncheckedArray[uint]](alloc0(sizeOfOffsets))
-
-    # Populates the `sizes` array and gets the `sizeOfData`
-    for index, element in pairs(strings):
-      result.sizes[index] = element.len()
-      sizeOfData += element.len()
-
-    # Checks that the input isn't composed of empty strings (`""`),
-    # allocates the memory that will contain the data and sets the `cap` field
-    # to it's size
-    if sizeOfData > 0:
-      result.data = alloc0(sizeOfData)
-      result.cap = sizeOfData
-    
-      # Gets the pointer to data and populates it
-      dataAddress = cast[uint](result.data) # Base pointer to the `data` field
-      for index, element in pairs(strings):
-        #[
-          The address of the element is obtained after adding to the base
-          pointer of the `data` field, the current offset of the current
-          element, which starts at 0 and increments by the length (in bytes)
-          of the element after each iteration of the cycle.
-
-          The offset of empty strings is left to 0 given that on
-          extraction by the `getBufferElementView` procedure, the length
-          of the data will be read first, and based on that the pointer
-          to it will be modified from `nil` to the actual data.
-        ]#
-        if element.len > 0:
-          result.offsets[index] = elementOffset
-          elementAddress = dataAddress + elementOffset
-          copyMem(cast[pointer](elementAddress), addr element[0], element.len)
-        else:
-          result.offsets[index] = 0
-        elementOffset += (result.sizes[index]).uint
-    else:
-      result.data = nil
-      result.cap = 0
-  else:
-    # This is the case for an empty sequence.
-    # The buffer should be created in it's default state
-    discard
+  allocate(result.sizes, result.len)
+  allocate(result.offsets, result.len)
+  var cap: int = 0
+  var offset: int = 0
+  for index, element in pairs(strings):
+    assignTo(result.sizes, element.len(), index)
+    assignTo(result.offsets, offset, index)
+    cap += element.len()
+    offset += element.len()
+  allocate(result.data, result.cap)
+  for index, element in pairs(strings):
+    assignTo(
+      getDataView(result.data, result.offset[index], result.sizes[index] - 1),
+      element
+    )
+ 
+proc createBufferInPlace*(buffer: ptr Buffer, allocator: HostAllocator, strings: seq[string]) =
+  buffer.len = strings.len()
+  allocate(buffer.sizes, allocator, buffer.len)
+  allocate(buffer.offsets, allocator, buffer.len)
+  var cap: int = 0
+  var offset: int = 0
+  for index, element in pairs(strings):
+    assignTo(buffer.sizes, allocator, element.len(), index)
+    assignTo(buffer.offsets, allocator, offset, index)
+    cap += element.len()
+    offset += element.len()
+  allocate(buffer.data, allocator, buffer.cap)
+  for index, element in pairs(strings):
+    assignTo(
+      getDataView(buffer.data, buffer.offset[index], buffer.sizes[index] - 1),
+      allocator,
+      element
+    )
 
 # =============================================================================
 # OPERATORS, ITERATORS AND PROCEDURES (PUBLIC API)
 # =============================================================================
 
-proc `==`*(view: BufferElementView; str: string): bool {.inline.} =
+proc `==`*(a, b: DataView): bool {.inline.} =
+  if a.len == b.len:
+    return equalMem(a.data, b.data, a.len)
+  else:
+    return false
+  
+proc `==`*(a: DataView, b: openArray[char]): bool {.inline.} =
+  return (a == b.toDataView())
+
+proc `==`*(a: DataView, b: string): bool {.inline.} =
   ##[
-    Checks if the contained string inside a `BufferElementView` is equal to the
+    Checks if the contained string inside a `DataView` is equal to the
     provided string. Example:
 
     ```nim
@@ -364,24 +316,9 @@ proc `==`*(view: BufferElementView; str: string): bool {.inline.} =
     if x[0] == y: echo "It works!"
     ```
   ]##
-  #[
-    To perform this check:
+  return (a == b.toDataView())
 
-    1. Checks that both strings have different sizes: if true, returns false,
-       otherwise we are left to check for cases where the strings are
-       equal-sized
-    2. Checks that both strings are empty (`len == 0`): if true, returns true,
-       otherwise we are left to check for cases where the strings are not
-       empty and are equal-sized
-    3. Checks that both strings are equal by comparing their raw memory
-  ]#
-  if view.len != str.len:
-    return false
-  if (view.len == 0) and (str.len == 0):
-    return true
-  return equalMem(view.data, addr str[0], view.len)
-
-proc `$`*(view: BufferElementView): string =
+proc `$`*(view: DataView): string =
   ##[
     Converts a `BufferElementView` into a string. Example:
 
@@ -392,18 +329,18 @@ proc `$`*(view: BufferElementView): string =
       echo $x[0]
     ```
   ]##
-  if view.len == 0 or view.data == nil: return ""
-  result = newString(view.len)
-  copyMem(addr result[0], view.data, view.len)
+  return (
+    $(view.toOpenArray(view[0], view[view.len-1]))
+  )
 
-iterator items*(buffer: Buffer): BufferElementView =
+iterator items*(buffer: Buffer): DataView =
   ##[
     Iterates over a `Buffer` and returns a view for each contained string.
 
     It is necessary for the `find` procedure and the `in` operator.
   ]##
   for i in 0 ..< buffer.len:
-    yield buffer.getView(i)
+    yield buffer.getDataView(i)
 
 proc find*(buffer: Buffer, item: string): int {.inline.} =
   ##[
@@ -439,7 +376,7 @@ proc len*(buf: Buffer): int {.inline.} =
   ]##
   result = buf.len
 
-proc `[]`*(buffer: Buffer, index: int): BufferElementView =
+proc `[]`*(buffer: Buffer, index: int): DataView =
   ##[
     Returns a view to the string contained within the provided index. Example:
 
@@ -448,7 +385,7 @@ proc `[]`*(buffer: Buffer, index: int): BufferElementView =
     echo $x[0] # "I am a string"
     ```
   ]##
-  result = buffer.getView(index)
+  result = buffer.getDataView(index)
 
 proc toSeq*(buffer: Buffer): seq[string] =
   ##[
@@ -463,21 +400,3 @@ proc toSeq*(buffer: Buffer): seq[string] =
   result = newSeqOfCap[string](buffer.len)
   for element in buffer:
     result.add($element)
-
-proc preAllocateBuffer*(buffer: ptr Buffer, len: int, cap: int) =
-  ## Allocates an empty buffer with the given length and capacity
-  buffer.len = len
-  buffer.cap = cap
-  var
-    sizeOfSizes: int = len * sizeof(int)
-    sizeOfOffsets: int = len * sizeof(uint)
-  if len > 0:
-    buffer.sizes = cast[ptr UncheckedArray[int]](alloc0(sizeOfSizes))
-    buffer.offsets = cast[ptr UncheckedArray[uint]](alloc0(sizeOfOffsets))
-  else:
-    buffer.sizes = nil
-    buffer.offsets = nil
-  if cap > 0:
-    buffer.data = alloc0(cap)
-  else:
-    buffer.data = nil
