@@ -231,7 +231,7 @@ proc loadModule*(description: ModuleDescription): Module =
       )
     )
 
-proc shell*(module: Module, input: Buffer): Buffer =
+proc shell*(module: Module, input: Buffer): Buffer {.raises: [WrongParameters, CommandFailed].} =
   var output: Buffer
   case module.kind
   of STATIC:
@@ -246,7 +246,7 @@ proc shell*(module: Module, input: Buffer): Buffer =
     )
     result = output
 
-proc shell*(module: Module, parameters: varargs[string, `$`]): seq[string] {.cdecl.} =
+proc shell*(module: Module, parameters: varargs[string, `$`]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
   ##[
     Procedure used to interact with the modules. Example:
 

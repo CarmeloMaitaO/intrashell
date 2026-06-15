@@ -44,15 +44,140 @@
   ```
 ]##
 type
+  HostAllocatorAction* = enum
+    ALLOC,
+    DEALLOC,
+    DEALLOCTOALLOC,
+    ZEROMEM
+  HostAllocator* = proc(address: pointer = nil, newsize: Natural = 0, action: HostAllocatorAction): pointer {.cdecl.}
+
+proc hostAllocator*(address: pointer = nil, newsize: Natural = 0, action: HostAllocatorAction): pointer {.cdecl.} =
+  case action
+  of ALLOC:
+    if newsize > 0:
+      return alloc0(newsize)
+    else:
+      return nil
+  of DEALLOC:
+    if address != nil:
+      dealloc(address)
+    return nil
+  of DEALLOCTOALLOC:
+    if address != nil:
+      dealloc(address)
+    if newsize > 0:
+      return alloc0(newsize)
+    else:
+      return nil
+  of ZEROMEM:
+    if (address != nil) and (newsize != 0):
+      zeroMem(address, newsize)
+    return address
+
+type
+  Data = ptr UncheckedArray[char]
+  DataView* = object
+    data: Data
+    len: Natural
+  Offsets = ptr UncheckedArray[uint]
+  Sizes = ptr UncheckedArray[int]
   Buffer* = object
-    data: pointer                     ## Single block of raw concatenated string data
-    cap: int                          ## Length of the `data` field
-    offsets: ptr UncheckedArray[uint] ## Offsets to each string
-    sizes: ptr UncheckedArray[int]    ## Length of each string
-    len: int                          ## Number of strings packed inside
-  BufferElementView* = object
-    data: ptr UncheckedArray[char]
-    len: int
+    data: Data       ## Single block of raw concatenated string data
+    cap: Natural     ## Length of the `data` field
+    offsets: Offsets ## Offsets to each string
+    sizes: Sizes     ## Length of each string
+    len: Natural     ## Number of strings packed inside
+
+
+# =============================================================================
+# AUXILIARY PROCEDURES
+# =============================================================================
+
+proc allocateSizes(dest: Sizes, size: Natural) {.inline.} =
+  dest = cast[Sizes](hostAllocator(size, ALLOC))
+
+proc allocateSizes(dest: Sizes, allocator: HostAllocator, size: Natural) {.inline.} =
+  dest = cast[Sizes](allocator(size, ALLOC))
+
+proc deallocSizes(dest: Sizes) {.inline.} =
+  hostAllocator(dest, DEALLOC)
+
+proc deallocSizes(dest: Sizes, allocator: HostAllocator) {.inline.} =
+  allocator(dest, DEALLOC)
+
+proc copySizes(dest: Sizes, src: Sizes, size: Natural) {.inline.} =
+  if (src != nil) and (size > 0) and (src != dest):
+    dest = hostAllocator(dest, size, DEALLOCTOALLOC)
+    copyMem(dest, src, size)
+
+proc copySizes(dest: Sizes, allocator: HostAllocator, src: Sizes, size: Natural) {.inline.} =
+  if (src != nil) and (size > 0) and (src != dest):
+    dest = allocator(dest, size, DEALLOCTOALLOC)
+    copyMem(dest, src, size)
+
+proc assignToSizes(dest: Sizes, index: Natural, value: Natural) {.inline.} =
+  dest[index] = value
+
+proc allocateOffsets(dest: Offsets, size: Natural) {.inline.} =
+  dest = cast[Offsets](hostAllocator(size, ALLOC))
+
+proc allocateOffsets(dest: Offsets, allocator: HostAllocator, size: Natural) {.inline.} =
+  dest = cast[Offsets](allocator(size, ALLOC))
+
+proc deallocOffsets(dest: Offsets) {.inline.} =
+  hostAllocator(dest, DEALLOC)
+
+proc deallocOffsets(dest: Offsets, allocator: HostAllocator) {.inline.} =
+  allocator(dest, DEALLOC)
+
+proc copyOffsets(dest: Offsets, src: Offsets, size: Natural) {.inline.} =
+  if (src != nil) and (size > 0) and (src != dest):
+    dest = hostAllocator(dest, size, DEALLOCTOALLOC)
+    copyMem(dest, src, size)
+
+proc copyOffsets(dest: Offsets, allocator: HostAllocator, src: Offsets, size: Natural) {.inline.} =
+  if (src != nil) and (size > 0) and (src != dest):
+    dest = allocator(dest, size, DEALLOCTOALLOC)
+    copyMem(dest, src, size)
+
+proc assignToOffsets(dest: Offsets, index: Natural, value: Natural) {.inline.} =
+  dest[index] = value
+
+proc allocateData(dest: Data, size: Natural) {.inline.} =
+  dest = cast[Data](hostAllocator(size, ALLOC))
+
+proc allocateData(dest: Data, allocator: HostAllocator, size: Natural) {.inline.} =
+  dest = cast[Data](allocator(size, ALLOC))
+
+proc deallocData(dest: Data) {.inline.} =
+  hostAllocator(dest, DEALLOC)
+
+proc deallocData(dest: Data, allocator: HostAllocator) {.inline.} =
+  allocator(dest, DEALLOC)
+
+proc copyData(dest: Data, src: Data, size: Natural) {.inline.} =
+  if (src != nil) and (size > 0) and (src != dest):
+    dest = hostAllocator(dest, size, DEALLOCTOALLOC)
+    copyMem(dest, src, size)
+
+proc copyData(dest: Data, allocator: HostAllocator, src: Data, size: Natural) {.inline.} =
+  if (src != nil) and (size > 0) and (src != dest):
+    dest = allocator(dest, size, DEALLOCTOALLOC)
+    copyMem(dest, src, size)
+
+proc getDataView(src: Data, start, end: Natural): DataView =
+  return DataView(
+    data: cast[Data](addr src[start]),
+    len: end
+  )
+
+proc assignToDataView(dest: var DataView, src: openArray[char]) =
+  if src.len() <= dest.len:
+    dest.data = hostAllocator(dest.data, dest.len, ZEROMEM)
+    copyData(dest.data, cast[Data](src), src.len())
+
+proc assignToDataView(dest: var DataView, src: string) =
+  assignToDataView(dest, src.toOpenArray(src.low(), src.high()))
 
 # =============================================================================
 # LIFETIME MANAGEMENT (Automatic Destructors)
@@ -106,7 +231,7 @@ proc `=copy`*(dest: var Buffer; src: Buffer) =
       data is not performed, and its value remains as `nil`
     ]#
     if src.cap > 0:
-      dest.data = alloc(src.cap)
+      dest.data = cast[ptr UncheckedArray[char]](alloc(src.cap))
       copyMem(dest.data, src.data, src.cap)
     else:
       dest.data = nil
@@ -146,9 +271,7 @@ proc getView(buffer: Buffer, index: int): BufferElementView {.inline.} =
       # Gets the pointer to the UncheckedArray from the sum of the base
       # pointer of `data` and the `offset` fields
       result.data = cast[ptr UncheckedArray[char]](
-        cast[pointer](
-          cast[uint](buffer.data) + buffer.offsets[index]
-        )
+        addr buffer.data[buffer.offsets[index]]
       )
   else:
     raise newException(IndexDefect, "Index out of bounds")
@@ -156,7 +279,7 @@ proc getView(buffer: Buffer, index: int): BufferElementView {.inline.} =
 # =============================================================================
 # CONSTRUCTOR (PUBLIC API)
 # =============================================================================
-
+# 
 proc createBuffer*(strings: seq[string]): Buffer =
   ##[
     Creates a new `Buffer` object from the provided sequence of strings. Example:

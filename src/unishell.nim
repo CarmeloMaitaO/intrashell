@@ -6,9 +6,13 @@ when not defined(gcArc) and not defined(gcOrc) and not defined(gcAtomicArc):
 
 import unishell/[
   rcutable,
-  module
+  module,
+  buffer
 ]
 export
+  buffer,
+  module.INITCOMMAND,
+  module.SHUTDOWNCOMMAND,
   module.WrongParameters,
   module.CommandFailed,
   module.Version,
@@ -20,9 +24,6 @@ export
   module.newModuleDescription,
   module.castPointerToString,
   module.castStringToPointer
-import std/[
-  paths
-]
 
 type
   UnishellObj* = object
@@ -36,14 +37,47 @@ proc newUnishell*(): Unishell =
   result.registry = newRcuTable[string, Module]()
   result.pointerToItself = castPointerToString(cast[UnishellPtr](result))
 
-proc shell*(unishell: UnishellObj, parameters: varargs[string, `$`]): seq[string] {.cdecl.} =
-  return unishell.registry[parameters[0]].shell(parameters[1..high(parameters)])
+proc shell*(unishell: UnishellObj, parameters: varargs[string, `$`]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
+  result = @[]
+  var
+    command: string
+    arguments = 1..parameters.high()
+  try:
+    command = parameters[0]
+  except KeyError:
+    raise newException(WrongParameters, "You need to specify a command")
+  try:
+    result = unishell.registry[command].shell(parameters[arguments])
+  except KeyError:
+    raise newException(WrongParameters, "You need to specify the arguments")
 
-proc shell*(unishell: Unishell, parameters: varargs[string, `$`]): seq[string] {.cdecl.} =
-  return unishell.registry[parameters[0]].shell(parameters[1..high(parameters)])
+proc shell*(unishell: Unishell, parameters: varargs[string, `$`]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
+  result = @[]
+  var
+    command: string
+    arguments = 1..parameters.high()
+  try:
+    command = parameters[0]
+  except KeyError:
+    raise newException(WrongParameters, "You need to specify a command")
+  try:
+    result = unishell.registry[command].shell(parameters[arguments])
+  except KeyError:
+    raise newException(WrongParameters, "You need to specify the arguments")
 
-proc shell*(unishell: UnishellPtr, parameters: varargs[string, `$`]): seq[string] {.cdecl.} =
-  return unishell.registry[parameters[0]].shell(parameters[1..high(parameters)])
+proc shell*(unishell: UnishellPtr, parameters: varargs[string, `$`]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
+  result = @[]
+  var
+    command: string
+    arguments = 1..parameters.high()
+  try:
+    command = parameters[0]
+  except KeyError:
+    raise newException(WrongParameters, "You need to specify a command")
+  try:
+    result = unishell.registry[command].shell(parameters[arguments])
+  except KeyError:
+    raise newException(WrongParameters, "You need to specify the arguments")
 
 type
   UnishellOperationType* = enum
@@ -85,8 +119,6 @@ proc execute(unishell: Unishell, operation: UnishellOperation, slot: int) =
     identity: string
     versionRegistry: Version
     versionOperation: Version
-    dispatch: UserSuppliedDispatch
-    path: Path
   case operation.kind
   of LOAD:
     identity = operation.description.identity
