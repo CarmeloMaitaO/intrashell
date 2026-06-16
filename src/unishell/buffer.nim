@@ -93,27 +93,27 @@ type
 # AUXILIARY PROCEDURES
 # =============================================================================
 
-proc allocate[T: Data|Offsets|Sizes](dest: T, len: Natural) {.inline.} =
+proc allocate[T: Data|Offsets|Sizes](dest: var T, len: Natural) {.inline.} =
   when not (T is Data):
     var totalLen: int = len * sizeof(int)
   else:
     var totalLen: int = len
   dest = cast[T](hostAllocator(totalLen, ALLOC))
 
-proc allocate[T: Data|Offsets|Sizes](dest: T, allocator: HostAllocator, len: Natural) {.inline.} =
+proc allocate[T: Data|Offsets|Sizes](dest: var T, allocator: HostAllocator, len: Natural) {.inline.} =
   when not (T is Data):
     var totalLen: int = len * sizeof(int)
   else:
     var totalLen: int = len
   dest = cast[T](allocator(totalLen, ALLOC))
 
-proc deallocate[T: Data|Offsets|Sizes](dest: T) {.inline.} =
+proc deallocate[T: Data|Offsets|Sizes](dest: var T) {.inline.} =
   dest = hostAllocator(dest, DEALLOC)
 
-proc deallocate[T: Data|Offsets|Sizes](dest: T, allocator: HostAllocator) {.inline.} =
+proc deallocate[T: Data|Offsets|Sizes](dest: var T, allocator: HostAllocator) {.inline.} =
   dest = allocator(dest, DEALLOC)
 
-proc overwrite[T: Data|Offsets|Sizes](dest: T, src: T, len: Natural) {.inline.} =
+proc overwrite[T: Data|Offsets|Sizes](dest: var T, src: T, len: Natural) {.inline.} =
   when not (T is Data):
     var totalLen: int = len * sizeof(int)
   else:
@@ -125,7 +125,7 @@ proc overwrite[T: Data|Offsets|Sizes](dest: T, src: T, len: Natural) {.inline.} 
     else:
       deallocate(dest)
 
-proc overwrite[T: Data|Offsets|Sizes](dest: T, allocator: HostAllocator, src: T, len: Natural) {.inline.} =
+proc overwrite[T: Data|Offsets|Sizes](dest: var T, allocator: HostAllocator, src: T, len: Natural) {.inline.} =
   when not (T is Data):
     var totalLen: int = len * sizeof(int)
   else:
@@ -137,7 +137,7 @@ proc overwrite[T: Data|Offsets|Sizes](dest: T, allocator: HostAllocator, src: T,
     else:
       deallocate(dest, allocator)
 
-proc copy[T: Data|Offsets|Sizes](dest: T, src: T, len: Natural) {.inline.} =
+proc copy[T: Data|Offsets|Sizes](dest: var T, src: T, len: Natural) {.inline.} =
   when not (T is Data):
     var totalLen: int = len * sizeof(int)
   else:
@@ -146,7 +146,7 @@ proc copy[T: Data|Offsets|Sizes](dest: T, src: T, len: Natural) {.inline.} =
     dest = hostAllocator(dest, totalLen, ZEROMEM)
     copyMem(dest, src, totalLen)
 
-proc copy[T: Data|Offsets|Sizes](dest: T, allocator: HostAllocator, src: T, len: Natural) {.inline.} =
+proc copy[T: Data|Offsets|Sizes](dest: var T, allocator: HostAllocator, src: T, len: Natural) {.inline.} =
   when not (T is Data):
     var totalLen: int = len * sizeof(int)
   else:
@@ -165,12 +165,12 @@ proc getDataView(src: Buffer, index: Natural): DataView =
   return getDataView(
     src.data,
     src.offsets[index],
-    src.sizes[index] - 1
+    src.sizes[index]
   )
 
 proc toDataView(arr: openArray[char]): DataView =
   return DataView(
-    data: cast[Data](addr arr),
+    data: cast[Data](addr arr[0]),
     len: arr.len()
   )
 
@@ -186,12 +186,12 @@ proc assignTo[T: DataView|Offsets|Sizes; V: Natural|openArray[char]|string](dest
   when (not (T is DataView)) and (V is Natural):
     dest[index] = value
   elif (T is DataView) and (V is openArray[char]):
-    if src.len() <= dest.len:
+    if value.len() <= dest.len:
       copy(dest.data, (value.toDataView()).data, value.len())
     else:
       raise newException(ValueError, "Value is bigger than container")
   elif (T is DataView) and (V is string):
-    if src.len() <= dest.len:
+    if value.len() <= dest.len:
       copy(dest.data, (value.toDataView()).data, value.len())
     else:
       raise newException(ValueError, "Value is bigger than container")
@@ -202,12 +202,12 @@ proc assignTo[T: DataView|Offsets|Sizes; V: Natural|openArray[char]|string](dest
   when (not (T is DataView)) and (V is Natural):
     dest[index] = value
   elif (T is DataView) and (V is openArray[char]):
-    if src.len() <= dest.len:
+    if value.len() <= dest.len:
       copy(dest.data, allocator, (value.toDataView()).data, value.len())
     else:
       raise newException(ValueError, "Value is bigger than container")
   elif (T is DataView) and (V is string):
-    if src.len() <= dest.len:
+    if value.len() <= dest.len:
       copy(dest.data, allocator, (value.toDataView()).data, value.len())
     else:
       raise newException(ValueError, "Value is bigger than container")
@@ -264,10 +264,11 @@ proc createBuffer*(strings: seq[string]): Buffer =
     assignTo(result.offsets, offset, index)
     cap += element.len()
     offset += element.len()
+  result.cap = cap
   allocate(result.data, result.cap)
   for index, element in pairs(strings):
     assignTo(
-      getDataView(result.data, result.offset[index], result.sizes[index] - 1),
+      getDataView(result.data, result.offsets[index], result.sizes[index]),
       element
     )
  
@@ -282,10 +283,11 @@ proc createBufferInPlace*(buffer: ptr Buffer, allocator: HostAllocator, strings:
     assignTo(buffer.offsets, allocator, offset, index)
     cap += element.len()
     offset += element.len()
+  buffer.cap = cap
   allocate(buffer.data, allocator, buffer.cap)
   for index, element in pairs(strings):
     assignTo(
-      getDataView(buffer.data, buffer.offset[index], buffer.sizes[index] - 1),
+      getDataView(buffer.data, buffer.offsets[index], buffer.sizes[index]),
       allocator,
       element
     )
@@ -318,9 +320,12 @@ proc `==`*(a: DataView, b: string): bool {.inline.} =
   ]##
   return (a == b.toDataView())
 
+proc `[]`*(view: DataView, index: Natural): char =
+  return view.data[index]
+
 proc `$`*(view: DataView): string =
   ##[
-    Converts a `BufferElementView` into a string. Example:
+    Converts a `DataView` into a string. Example:
 
     ```nim
     var x: Buffer = createBuffer(@["Hello"])
@@ -330,7 +335,7 @@ proc `$`*(view: DataView): string =
     ```
   ]##
   return (
-    $(view.toOpenArray(view[0], view[view.len-1]))
+    $((view.data).toOpenArray(0, view.len-1))
   )
 
 iterator items*(buffer: Buffer): DataView =
