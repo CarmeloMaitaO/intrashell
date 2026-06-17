@@ -43,6 +43,7 @@ assert ushell.processOperations(
   newOperation(LOAD, mPV001)
 ) == @[]
 
+echo ushell.shell(commonIdentity, "Some", "Strings")
 assert ushell.shell(commonIdentity, "Some", "Strings") == @["Some", "Strings"]
 assert ushell.shell(commonIdentity) == @[]
 assert ushell.shell(commonIdentity, "") == @[""]
