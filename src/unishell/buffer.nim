@@ -57,7 +57,9 @@ type
   DataView* = object
     data: Data
     len: Natural
-
+  OffsetView* = object
+    offset: Offsets
+    index: Natural
 
 # =============================================================================
 # AUXILIARY PROCEDURES
@@ -73,11 +75,6 @@ proc toString(view: DataView): string {.inline, raises: [].} =
 proc toDataView(data: Data, len: Natural): DataView {.inline, raises: [].} =
   result.data = data
   result.len = len
-
-proc toDataView(text: string): DataView {.inline, raises: [].} =
-  result.data = hostAllocator(result.data, text.len(), ALLOC)
-  result.len = text.len()
-  copyMem(addr result.data[0], addr text[0], text.len())
 
 proc toDataView(buffer: Buffer, index: Natural): DataView {.inline, raises: [ValueError].} =
   if index >= buffer.len:
@@ -96,95 +93,100 @@ proc toDataView(buffer: Buffer, index: Natural): DataView {.inline, raises: [Val
 proc toString(buffer: Buffer, index: Natural): string {.inline, raises: [].} =
   return toString(toDataView(buffer, index))
 
-proc copy(allocator: HostAllocator, dest: Data, destlen: Natural, src: Data, srclen: Natural, destructive: bool) {.inline, raises: [].} =
+proc toOffsetView(buffer: Buffer, index: Natural): OffsetView {.inline, raises: [ValueError].} =
+  if index >= buffer.len:
+    raise newException(ValueError, "Index out of bounds")
+  else:
+    result = OffsetView(
+      offset: buffer.offsets,
+      index: index
+    )
+
+proc copy(allocator: HostAllocator, dest: Data, destlen: Natural, src: Data, srclen: Natural, destructive: bool) {.inline, raises: [ValueError].} =
   var
-    safetyCheck: bool = (dest != nil) and (destlen > 0)
-    commonCheck: bool = (src != nil) and (srclen > 0)
-  if (not safetyCheck) and (not destructive):
-    raise newException(ValueError, "Error: copy: Can't manipulate data that doesn't exists")
-  if src != dest:
-    if (src != nil) and (srclen > 0) and (srclen <= destlen):
+    destIsEmpty: bool = (dest == nil) or (destlen == 0)
+    srcIsEmpty: bool = (src == nil) or (srclen == 0)
+    canOperate: bool = (not destIsEmpty) or destructive
+  if canOperate:
+    if srcIsEmpty:
+      dest = cast[Data](allocator(dest, destlen, ZEROMEM))
+    elif (destlen >= srclen):
       dest = cast[Data](allocator(dest, destlen, ZEROMEM))
       copyMem(dest, src, srclen)
-    elif (src != nil) and (srclen > 0) and (srclen > destlen) and destructive:
+    elif destructive:
       dest = cast[Data](allocator(dest, destlen, DEALLOCTOALLOC))
       copyMem(dest, src, srclen)
     else:
-      allocator(dest, 0, DEALLOC)
-      dest = nil
-
-proc copy(allocator: HostAllocator, dest: Offsets, src: Offsets, len: Natural, destructive: bool) {.inline, raises: [].} =
-  var allocatorAction: HostAllocatorAction
-  if destructive:
-    allocatorAction = DEALLOCTOALLOC
+      raise newException(ValueError, "Error: copy: input is bigger than the target container")
   else:
-    allocatorAction = ZEROMEM
-  var totalLen: int = len * sizeof(int)
-  if src != dest:
-    if (src != nil) and (len > 0):
-      dest = cast[Offsets](allocator(dest, totalLen, allocatorAction))
-      copyMem(dest, src, totalLen)
-    else:
-      allocator(dest, 0, DEALLOC)
-      dest = nil
+    raise newException(ValueError, "Error: copy: Can\'t manipulate data that doesn\'t exists and won\'t be created")
 
-proc assignTo[T: DataView|Offsets|Sizes; V: Natural|openArray[char]|string](dest: var T, value: V, index: Natural = 0) {.inline, raises: [ValueError].} =
-  when (not (T is DataView)) and (V is Natural):
-    dest[index] = value
-  elif (T is DataView) and (V is openArray[char]):
-    if value.len() <= dest.len:
-      copy(dest.data, (value.toDataView()).data, value.len())
-    else:
-      raise newException(ValueError, "Value is bigger than container")
-  elif (T is DataView) and (V is string):
-    if value.len() <= dest.len:
-      copy(dest.data, (value.toDataView()).data, value.len())
-    else:
-      raise newException(ValueError, "Value is bigger than container")
-  else:
-    raise newException(ValueError, "The combination of type and value is not valid")
+proc copy(allocator: HostAllocator, dest: DataView, src: string) {.inline, raises: [ValueError].} =
+  copy(allocator, dest.data, dest.len, cast[Data](addr src[0]), src.len(), false)
 
-proc assignTo[T: DataView|Offsets|Sizes; V: Natural|openArray[char]|string](dest: var T, allocator: HostAllocator, value: V, index: Natural = 0) {.inline, raises: [ValueError].} =
-  when (not (T is DataView)) and (V is Natural):
-    dest[index] = value
-  elif (T is DataView) and (V is openArray[char]):
-    if value.len() <= dest.len:
-      copy(dest.data, allocator, (value.toDataView()).data, value.len())
+proc copy(allocator: HostAllocator, dest: Offsets, destlen: Natural, src: Offsets, srclen: Natural, destructive: bool) {.inline, raises: [ValueError].} =
+  var
+    destIsEmpty: bool = (dest == nil) or (destlen == 0)
+    srcIsEmpty: bool = (src == nil) or (srclen == 0)
+    canOperate: bool = (not destIsEmpty) or destructive
+    totalDestlen: int = destlen * sizeof(int)
+    totalSrclen: int = srclen * sizeof(int)
+  if canOperate:
+    if srcIsEmpty:
+      dest = cast[Offsets](allocator(dest, totalDestlen, ZEROMEM))
+    elif (totalDestlen >= totalSrclen):
+      dest = cast[Offsets](allocator(dest, totalDestlen, ZEROMEM))
+      copyMem(dest, src, totalSrclen)
+    elif destructive:
+      dest = cast[Offsets](allocator(dest, totalDestlen, DEALLOCTOALLOC))
+      copyMem(dest, src, totalSrclen)
     else:
-      raise newException(ValueError, "Value is bigger than container")
-  elif (T is DataView) and (V is string):
-    if value.len() <= dest.len:
-      copy(dest.data, allocator, (value.toDataView()).data, value.len())
-    else:
-      raise newException(ValueError, "Value is bigger than container")
+      raise newException(ValueError, "Error: copy: input is bigger than the target container")
   else:
-    raise newException(ValueError, "The combination of type and value is not valid")
+    raise newException(ValueError, "Error: copy: Can\'t manipulate data that doesn\'t exists and won\'t be created")
+
+proc copy(dest: OffsetView, value: Natural) {.inline, raises: [ValueError].} =
+  dest.offset[dest.index] = value
 
 # =============================================================================
 # LIFETIME MANAGEMENT (Automatic Destructors)
 # =============================================================================
 
-proc `=destroy`*(buf: var Buffer) =
-  deallocate(buf.data)
-  deallocate(buf.sizes)
-  deallocate(buf.offsets)
-  buf.len = 0
-  buf.cap = 0
+proc `=destroy`*(buffer: var Buffer) =
+  buffer.data = hostAllocator(
+    buffer.data,
+    buffer.offset[buffer.len-1],
+    DEALLOC
+  )
+  buffer.offsets = hostAllocator(
+    buffer.offsets,
+    buffer.len * sizeof(int),
+    DEALLOC
+  )
+  buffer.len = 0
 
 proc `=copy`*(dest: var Buffer; src: Buffer) =
-  dest.cap = src.cap
+  copy(
+    dest.data,
+    dest.offsets[dest.len-1],
+    src.data,
+    src.offsets[src.len-1],
+    true
+  )
+  copy(
+    dest.offsets,
+    dest.len * sizeof(int),
+    src.offsets,
+    src.len * sizeof(int),
+    true
+  )
   dest.len = src.len
-  overwrite(dest.sizes, src.sizes, src.len)
-  overwrite(dest.offsets, src.offsets, src.len)
-  overwrite(dest.data, src.data, src.cap)
 
 proc `=wasMoved`*(buffer: var Buffer) =
   # This hook is provided to make sure that the pointers are simply set to `nil`
-  buffer.sizes = nil
   buffer.offsets = nil
   buffer.data = nil
   buffer.len = 0
-  buffer.cap = 0
 
 # =============================================================================
 # CONSTRUCTOR (PUBLIC API)
