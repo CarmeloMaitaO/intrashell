@@ -45,9 +45,40 @@
 ]##
 
 import std/strutils
-import unishell/allocator
 
 type
+  HostAllocatorAction* = enum
+    ALLOC = 0,
+    DEALLOC = 1,
+    DEALLOCTOALLOC = 2,
+    ZEROMEM = 3
+  HostAllocator* = proc(address: pointer = nil, newsize: Natural = 0, action: HostAllocatorAction): pointer {.cdecl, raises: [].}
+
+proc hostAllocator*(address: pointer = nil, newsize: Natural = 0, action: HostAllocatorAction): pointer {.cdecl, raises: [].} =
+  case action
+  of ALLOC:
+    if newsize > 0:
+      return alloc0(newsize)
+    else:
+      return nil
+  of DEALLOC:
+    if address != nil:
+      dealloc(address)
+    return nil
+  of DEALLOCTOALLOC:
+    if address != nil:
+      dealloc(address)
+    if newsize > 0:
+      return alloc0(newsize)
+    else:
+      return nil
+  of ZEROMEM:
+    if (address != nil) and (newsize != 0):
+      zeroMem(address, newsize)
+    return address
+
+type
+  BufferError* = object of CatchableError
   Data = ptr UncheckedArray[char]
   Offsets = ptr UncheckedArray[int]
   Buffer* = object
@@ -65,13 +96,6 @@ type
 # AUXILIARY PROCEDURES
 # =============================================================================
 
-proc toString(arr: Data, len: Natural): string {.inline, raises: [].} =
-  result = newString(len)
-  copyMem(addr result[0], addr arr[0], len)
-
-proc toString(view: DataView): string {.inline, raises: [].} =
-  return toString(view.data, view.len)
-
 proc toDataView(data: Data, len: Natural): DataView {.inline, raises: [].} =
   result.data = data
   result.len = len
@@ -81,17 +105,14 @@ proc toDataView(buffer: Buffer, index: Natural): DataView {.inline, raises: [Val
     raise newException(ValueError, "Index out of bounds")
   elif index == 0:
     result = toDataView(
-      buffer.data[0],
+      buffer.data,
       buffer.offsets[0]
     )
   else:
     result = toDataView(
-      buffer.data[buffer.offsets[index-1]],
+      cast[Data](addr buffer.data[buffer.offsets[index-1]]),
       buffer.offsets[index]
     )
-
-proc toString(buffer: Buffer, index: Natural): string {.inline, raises: [].} =
-  return toString(toDataView(buffer, index))
 
 proc toOffsetView(buffer: Buffer, index: Natural): OffsetView {.inline, raises: [ValueError].} =
   if index >= buffer.len:
@@ -102,7 +123,17 @@ proc toOffsetView(buffer: Buffer, index: Natural): OffsetView {.inline, raises: 
       index: index
     )
 
-proc copy(allocator: HostAllocator, dest: Data, destlen: Natural, src: Data, srclen: Natural, destructive: bool) {.inline, raises: [ValueError].} =
+proc toString(arr: Data, len: Natural): string {.inline, raises: [].} =
+  result = newString(len)
+  copyMem(addr result[0], addr arr[0], len)
+
+proc toString(view: DataView): string {.inline, raises: [].} =
+  return toString(view.data, view.len)
+
+proc toString(buffer: Buffer, index: Natural): string {.inline, raises: [ValueError].} =
+  return toString(toDataView(buffer, index))
+
+proc copy(allocator: HostAllocator, dest: var Data, destlen: Natural, src: Data, srclen: Natural, destructive: bool) {.inline, raises: [ValueError].} =
   var
     destIsEmpty: bool = (dest == nil) or (destlen == 0)
     srcIsEmpty: bool = (src == nil) or (srclen == 0)
@@ -121,10 +152,10 @@ proc copy(allocator: HostAllocator, dest: Data, destlen: Natural, src: Data, src
   else:
     raise newException(ValueError, "Error: copy: Can\'t manipulate data that doesn\'t exists and won\'t be created")
 
-proc copy(allocator: HostAllocator, dest: DataView, src: string) {.inline, raises: [ValueError].} =
+proc copy(allocator: HostAllocator, dest: var DataView, src: string) {.inline, raises: [ValueError].} =
   copy(allocator, dest.data, dest.len, cast[Data](addr src[0]), src.len(), false)
 
-proc copy(allocator: HostAllocator, dest: Offsets, destlen: Natural, src: Offsets, srclen: Natural, destructive: bool) {.inline, raises: [ValueError].} =
+proc copy(allocator: HostAllocator, dest: var Offsets, destlen: Natural, src: Offsets, srclen: Natural, destructive: bool) {.inline, raises: [ValueError].} =
   var
     destIsEmpty: bool = (dest == nil) or (destlen == 0)
     srcIsEmpty: bool = (src == nil) or (srclen == 0)
@@ -145,7 +176,7 @@ proc copy(allocator: HostAllocator, dest: Offsets, destlen: Natural, src: Offset
   else:
     raise newException(ValueError, "Error: copy: Can\'t manipulate data that doesn\'t exists and won\'t be created")
 
-proc copy(dest: OffsetView, value: Natural) {.inline, raises: [ValueError].} =
+proc copy(dest: var OffsetView, value: Natural) {.inline, raises: [ValueError].} =
   dest.offset[dest.index] = value
 
 # =============================================================================
@@ -192,7 +223,7 @@ proc `=wasMoved`*(buffer: var Buffer) =
 # CONSTRUCTOR (PUBLIC API)
 # =============================================================================
  
-proc createBuffer*(strings: seq[string]): Buffer {.raises: [].} =
+proc createBuffer*(strings: seq[string]): Buffer {.raises: [BufferError].} =
   ##[
     Creates a new `Buffer` object from the provided sequence of strings. Example:
 
@@ -203,64 +234,41 @@ proc createBuffer*(strings: seq[string]): Buffer {.raises: [].} =
     ```
   ]##
   var
-    cap: int = 0
     offset: int = 0
-    aux: DataView
+    dataView: DataView
+    offsetView: offsetView
   try:
     result.len = strings.len()
-    allocate(result.sizes, result.len)
-    allocate(result.offsets, result.len)
+    hostAllocator(result.offsets, result.len * sizeof(int), ALLOC)
     for index, element in pairs(strings):
-      assignTo(result.sizes, element.len()-1, index)
-      assignTo(result.offsets, offset, index)
-      cap += element.len()
       offset += element.len()
-    result.cap = cap
-    allocate(result.data, result.cap)
+      offsetView = toOffsetView(result, index)
+      copy(offsetView, offset)
+    hostAllocator(result.data, offsets, ALLOC)
     for index, element in pairs(strings):
-      aux = getDataView(result.data, result.offsets[index], result.sizes[index])
-      assignTo(
-        aux,
-        element
-      )
+      dataView = getDataView(result, index)
+      copy(hostAllocator, dataView, element)
   except ValueError:
-    result = Buffer(
-      data: nil,
-      cap: 0,
-      offsets: nil,
-      sizes: nil,
-      len: 0
-    )
+    raise newException(BufferError, "Couldn\'t create buffer")
  
-proc createBufferInPlace*(buffer: ptr Buffer, allocator: HostAllocator, strings: seq[string]) {.raises: [].} =
+proc createBuffer*(allocator: HostAllocator, buffer: ptr Buffer, strings: seq[string]) {.raises: [BufferError].} =
   var
-    cap: int = 0
     offset: int = 0
-    aux: DataView
+    dataView: DataView
+    offsetView: offsetView
   try:
     buffer.len = strings.len()
-    allocate(buffer.sizes, allocator, buffer.len)
-    allocate(buffer.offsets, allocator, buffer.len)
+    allocator(buffer.offsets, buffer.len * sizeof(int), ALLOC)
     for index, element in pairs(strings):
-      assignTo(buffer.sizes, allocator, element.len(), index)
-      assignTo(buffer.offsets, allocator, offset, index)
-      cap += element.len()
       offset += element.len()
-    buffer.cap = cap
-    allocate(buffer.data, allocator, buffer.cap)
+      offsetView = toOffsetView(buffer, index)
+      copy(offsetView, offset)
+    allocator(buffer.data, offsets, ALLOC)
     for index, element in pairs(strings):
-      aux = getDataView(buffer.data, buffer.offsets[index], buffer.sizes[index])
-      assignTo(
-        aux,
-        allocator,
-        element
-      )
+      dataView = getDataView(buffer, index)
+      copy(allocator, dataView, element)
   except ValueError:
-    deallocate(buffer.data)
-    deallocate(buffer.sizes)
-    deallocate(buffer.offsets)
-    buffer.len = 0
-    buffer.cap = 0
+    raise newException(BufferError, "Couldn\'t create buffer")
 
 # =============================================================================
 # OPERATORS, ITERATORS AND PROCEDURES (PUBLIC API)
@@ -272,9 +280,6 @@ proc `==`*(a, b: DataView): bool {.inline, raises: [].} =
   else:
     return false
   
-proc `==`*(a: DataView, b: openArray[char]): bool {.inline, raises: [].} =
-  return (a == b.toDataView())
-
 proc `==`*(a: DataView, b: string): bool {.inline, raises: [].} =
   ##[
     Checks if the contained string inside a `DataView` is equal to the
@@ -288,10 +293,13 @@ proc `==`*(a: DataView, b: string): bool {.inline, raises: [].} =
     if x[0] == y: echo "It works!"
     ```
   ]##
-  return (a == b.toDataView())
+  return (a.toString() == b)
 
-proc `[]`*(view: DataView, index: Natural): char {.raises: [].} =
-  return view.data[index]
+proc `[]`*(view: DataView, index: Natural): char {.raises: [ValueError].} =
+  if index > view.len:
+    raise newException(ValueError, "Error: []: index out of bounds")
+  else:
+    return view.data[index]
 
 proc `$`*(view: DataView): string =
   ##[
@@ -304,9 +312,7 @@ proc `$`*(view: DataView): string =
       echo $x[0]
     ```
   ]##
-  return (
-    join((view.data).toOpenArray(0, view.len-1), "")
-  )
+  return view.toString()
 
 iterator items*(buffer: Buffer): DataView {.raises: [].} =
   ##[
@@ -315,7 +321,7 @@ iterator items*(buffer: Buffer): DataView {.raises: [].} =
     It is necessary for the `find` procedure and the `in` operator.
   ]##
   for i in 0 ..< buffer.len:
-    yield buffer.getDataView(i)
+    yield buffer.toDataView(i)
 
 proc find*(buffer: Buffer, item: string): int {.inline, raises: [].} =
   ##[
@@ -360,7 +366,7 @@ proc `[]`*(buffer: Buffer, index: int): DataView {.raises: [].} =
     echo $x[0] # "I am a string"
     ```
   ]##
-  result = buffer.getDataView(index)
+  result = buffer.toDataView(index)
 
 proc toSeq*(buffer: Buffer): seq[string] {.raises: [].} =
   ##[
