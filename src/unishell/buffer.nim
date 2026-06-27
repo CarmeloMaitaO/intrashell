@@ -152,7 +152,7 @@ proc copy(allocator: HostAllocator, dest: var Data, destlen: Natural, src: Data,
   else:
     raise newException(ValueError, "Error: copy: Can\'t manipulate data that doesn\'t exists and won\'t be created")
 
-proc copy(allocator: HostAllocator, dest: var DataView, src: string) {.inline, raises: [ValueError].} =
+proc writeTo(allocator: HostAllocator, dest: var DataView, src: string) {.inline, raises: [ValueError].} =
   copy(allocator, dest.data, dest.len, cast[Data](addr src[0]), src.len(), false)
 
 proc copy(allocator: HostAllocator, dest: var Offsets, destlen: Natural, src: Offsets, srclen: Natural, destructive: bool) {.inline, raises: [ValueError].} =
@@ -176,7 +176,7 @@ proc copy(allocator: HostAllocator, dest: var Offsets, destlen: Natural, src: Of
   else:
     raise newException(ValueError, "Error: copy: Can\'t manipulate data that doesn\'t exists and won\'t be created")
 
-proc copy(dest: var OffsetView, value: Natural) {.inline, raises: [ValueError].} =
+proc writeTo(dest: var OffsetView, value: Natural) {.inline, raises: [ValueError].} =
   dest.offset[dest.index] = value
 
 # =============================================================================
@@ -186,7 +186,7 @@ proc copy(dest: var OffsetView, value: Natural) {.inline, raises: [ValueError].}
 proc `=destroy`*(buffer: var Buffer) =
   buffer.data = hostAllocator(
     buffer.data,
-    buffer.offset[buffer.len-1],
+    buffer.offsets[buffer.len-1],
     DEALLOC
   )
   buffer.offsets = hostAllocator(
@@ -243,11 +243,11 @@ proc createBuffer*(strings: seq[string]): Buffer {.raises: [BufferError].} =
     for index, element in pairs(strings):
       offset += element.len()
       offsetView = toOffsetView(result, index)
-      copy(offsetView, offset)
+      writeTo(offsetView, offset)
     hostAllocator(result.data, offsets, ALLOC)
     for index, element in pairs(strings):
       dataView = getDataView(result, index)
-      copy(hostAllocator, dataView, element)
+      writeTo(hostAllocator, dataView, element)
   except ValueError:
     raise newException(BufferError, "Couldn\'t create buffer")
  
@@ -262,11 +262,11 @@ proc createBuffer*(allocator: HostAllocator, buffer: ptr Buffer, strings: seq[st
     for index, element in pairs(strings):
       offset += element.len()
       offsetView = toOffsetView(buffer, index)
-      copy(offsetView, offset)
+      writeTo(offsetView, offset)
     allocator(buffer.data, offsets, ALLOC)
     for index, element in pairs(strings):
       dataView = getDataView(buffer, index)
-      copy(allocator, dataView, element)
+      writeTo(allocator, dataView, element)
   except ValueError:
     raise newException(BufferError, "Couldn\'t create buffer")
 
