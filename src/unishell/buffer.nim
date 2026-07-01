@@ -47,6 +47,19 @@
 import std/strutils
 
 type
+  BufferError* = object of CatchableError # The error type of this module
+
+# =============================================================================
+# EXTERNAL ALLOCATOR
+# =============================================================================
+
+#[
+ Currently, it is implemented as a case statement in order to make it easier
+ to export to other languages. It might be turned into a VTable with pointer
+ to the respective memory management procedures later on.
+]#
+
+type
   HostAllocatorAction* = enum
     ALLOC = 0,
     DEALLOC = 1,
@@ -77,28 +90,86 @@ proc hostAllocator*(address: pointer = nil, newsize: Natural = 0, action: HostAl
       zeroMem(address, newsize)
     return address
 
+# =============================================================================
+# DATA FIELD
+# =============================================================================
+
+#[
+ The `Data` object is meant to be an abstraction over the
+ `ptr UncheckedArray[char]` type.
+]#
+
 type
-  BufferError* = object of CatchableError
-  Data = ptr UncheckedArray[char]
-  Offsets = ptr UncheckedArray[int]
-  Buffer* = object
-    data: Data       ## Single block of raw concatenated string data
-    offsets: Offsets ## Offsets to the end of each string. Last one also indicates capacity
-    len: Natural     ## Number of strings packed inside
+  DataObj = UncheckedArray[char]
+  Data = ptr DataObj
   DataView* = object
     data: Data
     len: Natural
+
+proc toDataView(data: Data, len: Natural): DataView {.inline, raises: [].} =
+  result.data = data
+  result.len = len
+
+proc toString(view: DataView): string {.inline, raises: [].} =
+  result = newString(view.len)
+  copyMem(addr result[0], addr view.data[0], view.len)
+
+proc writeTo(allocator: HostAllocator, dest: var DataView, src: string) {.inline, raises: [ValueError].} =
+  copy(allocator, dest.data, dest.len, cast[Data](addr src[0]), src.len(), false)
+
+proc copy(allocator: HostAllocator, dest: var Data, destlen: Natural, src: Data, srclen: Natural, destructive: bool) {.inline, raises: [ValueError].} =
+  var
+    destIsEmpty: bool = (dest == nil) or (destlen == 0)
+    srcIsEmpty: bool = (src == nil) or (srclen == 0)
+    canOperate: bool = (not destIsEmpty) or destructive
+  if canOperate:
+    if srcIsEmpty:
+      dest = cast[Data](allocator(dest, destlen, ZEROMEM))
+    elif (destlen >= srclen):
+      dest = cast[Data](allocator(dest, destlen, ZEROMEM))
+      copyMem(dest, src, srclen)
+    elif destructive:
+      dest = cast[Data](allocator(dest, destlen, DEALLOCTOALLOC))
+      copyMem(dest, src, srclen)
+    else:
+      raise newException(ValueError, "Error: copy: input is bigger than the target container")
+  else:
+    raise newException(ValueError, "Error: copy: Can\'t manipulate data that doesn\'t exists and won\'t be created")
+
+# =============================================================================
+# OFFSETS FIELD
+# =============================================================================
+
+#[
+ The `Offsets` object is meant to be an abstraction over the
+ `ptr UncheckedArray[int]` type.
+]#
+
+type
+  OffsetsObj = UncheckedArray[int]
+  Offsets = ptr OffsetsObj
   OffsetView* = object
     offset: Offsets
     index: Natural
 
 # =============================================================================
-# AUXILIARY PROCEDURES
+# BUFFER OBJECT
 # =============================================================================
 
-proc toDataView(data: Data, len: Natural): DataView {.inline, raises: [].} =
-  result.data = data
-  result.len = len
+#[
+ The `Buffer` object is meant to simulate a `seq[string]` type of Nim inside a
+ single, flat structure
+]#
+
+type
+  Buffer* = object
+    data: Data       ## Single block of raw concatenated string data
+    offsets: Offsets ## Offsets to the end of each string. Last one also indicates capacity
+    len: Natural     ## Number of strings packed inside
+
+# =============================================================================
+# AUXILIARY PROCEDURES
+# =============================================================================
 
 proc toDataView(buffer: Buffer, index: Natural): DataView {.inline, raises: [ValueError].} =
   if index >= buffer.len:
@@ -123,37 +194,8 @@ proc toOffsetView(buffer: Buffer, index: Natural): OffsetView {.inline, raises: 
       index: index
     )
 
-proc toString(arr: Data, len: Natural): string {.inline, raises: [].} =
-  result = newString(len)
-  copyMem(addr result[0], addr arr[0], len)
-
-proc toString(view: DataView): string {.inline, raises: [].} =
-  return toString(view.data, view.len)
-
 proc toString(buffer: Buffer, index: Natural): string {.inline, raises: [ValueError].} =
   return toString(toDataView(buffer, index))
-
-proc copy(allocator: HostAllocator, dest: var Data, destlen: Natural, src: Data, srclen: Natural, destructive: bool) {.inline, raises: [ValueError].} =
-  var
-    destIsEmpty: bool = (dest == nil) or (destlen == 0)
-    srcIsEmpty: bool = (src == nil) or (srclen == 0)
-    canOperate: bool = (not destIsEmpty) or destructive
-  if canOperate:
-    if srcIsEmpty:
-      dest = cast[Data](allocator(dest, destlen, ZEROMEM))
-    elif (destlen >= srclen):
-      dest = cast[Data](allocator(dest, destlen, ZEROMEM))
-      copyMem(dest, src, srclen)
-    elif destructive:
-      dest = cast[Data](allocator(dest, destlen, DEALLOCTOALLOC))
-      copyMem(dest, src, srclen)
-    else:
-      raise newException(ValueError, "Error: copy: input is bigger than the target container")
-  else:
-    raise newException(ValueError, "Error: copy: Can\'t manipulate data that doesn\'t exists and won\'t be created")
-
-proc writeTo(allocator: HostAllocator, dest: var DataView, src: string) {.inline, raises: [ValueError].} =
-  copy(allocator, dest.data, dest.len, cast[Data](addr src[0]), src.len(), false)
 
 proc copy(allocator: HostAllocator, dest: var Offsets, destlen: Natural, src: Offsets, srclen: Natural, destructive: bool) {.inline, raises: [ValueError].} =
   var
