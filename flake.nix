@@ -24,7 +24,6 @@
           nim
           nimble
           nph
-          emscripten
         ]; # buildInputs
       }; # devShells.default
     }; # perSystem
