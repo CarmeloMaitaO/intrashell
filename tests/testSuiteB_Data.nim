@@ -92,3 +92,9 @@ assert (auxView.len() == 4)
 
 destroyData(hostAllocator, auxData)
 assert (auxData == nil)
+
+auxData = newData(0)
+assert (auxData == nil)
+
+auxData = newData("")
+assert (auxData == nil)
