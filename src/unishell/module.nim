@@ -117,12 +117,19 @@ proc `=destroy`*(payload: var StaticModulePayloadObj) =
     payload.dispatch.moduleShutdown()
     payload.dispatch = nil
 
+proc `=wasMoved`(payload: var StaticModulePayloadObj) =
+  payload.dispatch = nil
+
 proc `=destroy`*(payload: var DynamicModulePayloadObj) =
   if payload.dispatch != nil:
     payload.dispatch.moduleShutdown()
     payload.dispatch = nil
   if payload.lib != nil:
     unloadLib(payload.lib)
+
+proc `=wasMoved`(payload: var DynamicModulePayloadObj) =
+  payload.dispatch = nil
+  payload.lib = nil
 
 type
   Version* = object

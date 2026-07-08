@@ -46,9 +46,6 @@
 
 import std/strutils
 
-type
-  BufferError* = object of CatchableError # The error type of this module
-
 # =============================================================================
 # BUFFER OBJECT
 # =============================================================================
@@ -59,76 +56,80 @@ type
 ]#
 
 type
-  Buffer* = object
-    data: Data       ## Single block of raw concatenated string data
-    offsets: Offsets ## Offsets to the end of each string. Last one also indicates capacity
-    len: Natural     ## Number of strings packed inside
+  Buffer* = ptr UncheckedArray[char]
+  DataView* = object
+    data: ptr UncheckedArray[char]
+    len: Natural
+  OffsetsView* = object
+    offsets: ptr UncheckedArray[Natural]
+    len: Natural
+  BufferView* = object
+    data: seq[DataView]
+    len: Natural
 
- iterator items*(buffer: Buffer): DataView {.raises: [].} =
-   ##[
-     Iterates over a `Buffer` and returns a view for each contained string.
- 
-     It is necessary for the `find` procedure and the `in` operator.
-   ]##
-   for i in 0 ..< buffer.len:
-     yield buffer.toDataView(i)
- 
- proc find*(buffer: Buffer, item: string): int {.inline, raises: [].} =
-   ##[
-     Iterates over a `Buffer` object and returns the first index that contains
-     the provided string.
- 
-     It is necessary for the `contains` procedure and the `in` operator.
-   ]##
-   result = 0
-   for view in buffer:
-     if view == item:
-       return result
-     inc(result)
-   return -1
- 
- proc contains*(buffer: Buffer, item: string): bool {.inline, raises: [].} =
-   ##[
-     Iterates over a `Buffer` object and returns `true` if the provided
-     string is inside said `Buffer`.
-     
-     It is necessary for the `in` operator.
-   ]##
-   find(buffer, item) >= 0
- 
- proc len*(buf: Buffer): int {.inline, raises: [].} =
-   ##[
-     Returns the number of strings contained within the buffer. Example:
- 
-     ```nim
-     var x: Buffer = createBuffer(@["1", "2", "3"])
-     echo $x.len() # "3"
-     ```
-   ]##
-   result = buf.len
- 
- proc `[]`*(buffer: Buffer, index: int): DataView {.raises: [].} =
-   ##[
-     Returns a view to the string contained within the provided index. Example:
- 
-     ```nim
-     var x: Buffer = createBuffer(@["I am a string!"])
-     echo $x[0] # "I am a string"
-     ```
-   ]##
-   result = buffer.toDataView(index)
- 
- proc toSeq*(buffer: Buffer): seq[string] {.raises: [].} =
-   ##[
-     Creates a new `seq[string]` out of the provided `Buffer`. Example:
- 
-     ```nim
-     var
-       x: Buffer = createBuffer(@["Hello", "world"])
-       y: seq[string] = x.toSeq()
-     ```
-   ]##
-   result = newSeqOfCap[string](buffer.len)
-   for element in buffer:
-     result.add($element)
- 
+proc deallocBuffer*(buffer: var Buffer, allocator: HostAllocator) {.raises: [].} =
+  discard allocator(buffer, 0, DEALLOC)
+
+proc deallocToAllocBuffer*(buffer: var Buffer, allocator: HostAllocator, size: Natural) {.raises: [].} =
+  discard allocator(buffer, size, DEALLOCTOALLOC)
+
+proc getOffsetsSize*(len: Natural): Natural {.raise: [].} =
+  # ((length field + Start offset) + number of strings/offsets) * size of an integer
+  result = (2 + len)*(sizeOf(int))
+
+proc getDataSize*(strings: seq[string]): Natural {.raises: [].} =
+  result = 0
+  for i in strings:
+    result += i.len()
+
+proc getBufferSize*(offsetsSize: Natural, dataSize: Natural): Natural {.raises: [].} =
+  result = 0
+  result += offsetsSize # The offsets field
+  result += dataSize    # The data field
+
+proc getOffsetsView*(buffer: var Buffer, len: Natural): OffsetsView {.raises: [].} =
+  # This one is used to populate the fields on creation
+  result.offsets = cast[ptr UncheckedArray[Natural]](buffer)
+  result.len = len+2 # len + (length field + start offset)
+
+proc getOffsetsView*(buffer: var Buffer): OffsetsView {.raises: [].} =
+  # This one is used to get only the offsets of the buffer
+  result.offsets = cast[ptr UncheckedArray[Natural]](buffer)
+  if result.offsets != nil:
+    result.len = result.offsets[0]
+  else:
+    result.len = 0
+  if result.len > 0:
+    result.offsets = cast[ptr UncheckedArray[Natural]](
+      addr result.offsets[1]
+    )
+  else:
+    result.offsets = nil
+
+proc getDataView*(buffer: var Buffer, view: OffsetsView, index: Natural): DataView {.raises: [].} =
+  let trueIndex: int = index+1
+  result.data = cast[ptr UncheckedArray[char]](addr buffer[view.offsets[index]])
+  result.len = view.offsets[trueIndex] + 1 - view.offsets[index]
+
+proc getDataViews*(buffer: var Buffer): seq[DataView] {.raises: [].} =
+  var auxOffsetsView: OffsetsView = buffer.getOffsetsView()
+
+proc populateOffsets*(view: var OffsetsView, len: Natural, start: Natural, strings: seq[string]) {.raises: [].} =
+  view.offsets[0] = len
+  var aux: Natural = start
+  for index, item in strings:
+    view.offsets[index+1] = aux
+    aux += item.len()
+
+proc newBuffer*(buffer: var Buffer, allocator: HostAllocator, strings: seq[strings]) {.raises: [].} =
+  let
+    len: Natural = strings.len()
+    sizeOfOffsets: Natural = getOffsetsSize(len)
+    sizeOfData: Natural = getDataSize(strings)
+    sizeOfBuffer: Natural = getBufferSize(sizeOfOffsets, sizeOfData)
+  buffer.deallocToAllocBuffer(allocator, sizeOfBuffer)
+  var auxOffsetsView: OffsetsView
+  if len > 0:
+    auxOffsetsView = buffer.getOffsetsView(len)
+    auxOffsetsView.populateOffsets(len, sizeOfOffsets, strings)
+    
