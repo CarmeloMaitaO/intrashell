@@ -44,8 +44,6 @@
   ```
 ]##
 
-import std/strutils
-
 # =============================================================================
 # BUFFER OBJECT
 # =============================================================================
@@ -57,21 +55,53 @@ import std/strutils
 
 type
   Buffer* = ptr UncheckedArray[char]
-  DataView* = object
-    data: ptr UncheckedArray[char]
-    len: Natural
-  OffsetsView* = object
-    offsets: ptr UncheckedArray[Natural]
-    len: Natural
+    ##[
+      Simulates a `seq[string]` in a flat structure. It is structured in the following way:
+
+      Starting index
+
+      0                        \ Length (number of contained strings)
+      sizeOf(int)              \ Offsets (indexes that mark the end of the string).
+                               \ And additional offset is put at the start to mark the
+                               \ first index for the data part
+      sizeOf(int)*(Length + 1) \ Data. Starts after the length and offsets fields
+    ]##
   BufferView* = object
-    data: seq[DataView]
+    ##[
+      A unified view for all the strings contained within the Buffer. It uses
+      a sequence of character views to point to the actual strings.
+    ]##
+    strings: seq[View[char]]
     len: Natural
+    cap: Natural
 
 proc deallocBuffer*(buffer: var Buffer, allocator: HostAllocator) {.raises: [].} =
   discard allocator(buffer, 0, DEALLOC)
 
 proc deallocToAllocBuffer*(buffer: var Buffer, allocator: HostAllocator, size: Natural) {.raises: [].} =
   discard allocator(buffer, size, DEALLOCTOALLOC)
+
+proc newView*[T](address: pointer, kind: T, len: Natural): View[T] {.raises: [].} =
+  result.view = cast[ptr UncheckedArray[kind]](address)
+  result.len = len
+
+proc newView*[T](buffer: var Buffer, kind: T, startIndex: Natural, endIndex: Natural): View[T] {.raises: [].} =
+  result = newView(
+    addr buffer[startIndex], # Address of the starting index
+    kind,
+    (endIndex-startIndex)+1  # Length = difference between indexes + starting index
+  )
+
+proc newBufferView*(buffer: var Buffer): BufferView {.raises: [].} =
+  var
+    auxViewNumeric: View[int]
+    auxViewChar: View[char]
+  if buffer != nil:
+    auxViewNumeric = buffer.newView[int](0, 0)
+    auxViewNumeric[0]
+  else:
+    result.len = 0
+    result.cap = 0
 
 proc getOffsetsSize*(len: Natural): Natural {.raise: [].} =
   # ((length field + Start offset) + number of strings/offsets) * size of an integer
