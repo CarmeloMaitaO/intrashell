@@ -1,4 +1,5 @@
 import unishell/allocator
+export allocator
 
 type
   AllowedTypes* = (char or Natural)
@@ -12,22 +13,50 @@ type
     view: Darray[T]
     len: Natural
 
-proc dallocDarray*[T: AllowedTypes](dest: var Darray[T], size: Natural, allocator: HostAllocator = hostAllocator) {.raises: [].} =
-  if size > 0:
-    dest = allocator(dest, size, DEALLOCTOALLOC)
-  else:
-    dest = allocator(dest, size, DEALLOC)
+proc isNil*[T: AllowedTypes](view: View[T]): bool {.raises: [].} =
+  return view.view == true
 
-proc newView*[T: AllowedTypes](src: Darray[T], len: Natural): View {.raises: [].} =
+proc dallocDarray*[T: AllowedTypes](dest: var Darray[T], size: Natural, allocator: HostAllocator = hostAllocator) {.raises: [].} =
+  when T is Natural:
+    let totalSize: Natural = size*sizeOf(int)
+  when T is char:
+    let totalSize: Natural = size
+  if size > 0:
+    dest = cast[Darray[T]](allocator(dest, totalSize, DEALLOCTOALLOC))
+  else:
+    dest = cast[Darray[T]](allocator(dest, totalSize, DEALLOC))
+
+proc newView*[T: AllowedTypes](src: Darray[T], len: Natural): View[T] {.raises: [].} =
   result.view = src
   result.len = len
 
-proc newView*[T: AllowedTypes](src: Darray[T], startIndex: Natural, len: Natural): View {.raises: [].} =
+proc newView*[T: AllowedTypes](src: View[T], len: Natural): View[T] {.raises: [].} =
+  result.view = src.view
+  result.len = len
+
+proc newView*[T: AllowedTypes](src: Darray[T], startIndex: Natural, len: Natural): View[T] {.raises: [].} =
   result.view = cast[Darray[T]](addr src[startIndex])
   result.len = len
 
-proc newView*[S: AllowedTypes; D: AllowedTypes](src: Darray[S], destType: D, startIndex: Natural, len: Natural): View {.raises: [].} =
-  result.view = cast[Darray[D]](addr src[startIndex])
+proc newView*[T: AllowedTypes](src: View[T], startIndex: Natural, len: Natural): View[T] {.raises: [].} =
+  result.view = cast[Darray[T]](addr src.view[startIndex])
+  result.len = len
+
+
+proc newAlternateView*(src: Darray[char], len: Natural): View[Natural] {.raises: [].} =
+  result.view = cast[Darray[Natural]](addr src[0])
+  result.len = len
+  
+proc newAlternateView*(src: Darray[char], startIndex: Natural, len: Natural): View[Natural] {.raises: [].} =
+  result.view = cast[Darray[Natural]](addr src[startIndex])
+  result.len = len
+
+proc newAlternateView*(src: Darray[Natural], startIndex: Natural, len: Natural): View[char] {.raises: [].} =
+  result.view = cast[Darray[char]](addr src[startIndex])
+  result.len = len
+
+proc newAlternateView*(src: Darray[Natural], len: Natural): View[char] {.raises: [].} =
+  result.view = cast[Darray[char]](addr src[0])
   result.len = len
 
 proc len*[T: AllowedTypes](view: View[T]): int {.raises: [].} =
@@ -48,7 +77,7 @@ proc `[]`*[T: AllowedTypes](view: View[T], index: Natural): T {.raises: [].} =
 proc `[]=`*[T: AllowedTypes](view: var View[T], index: Natural, value: T) {.raises: [].} =
   view.view[index] = value
 
-iterator items*[T: AllowedTypes](view: View[T]): int {.raises: [].} =
+iterator items*[T: AllowedTypes](view: View[T]): T {.raises: [].} =
   for i in 0 ..< view.len:
     yield view.view[i]
 
@@ -73,7 +102,7 @@ proc `$`*[T: AllowedTypes](view: View[T]): string {.raises: [].} =
       copyMem(addr aux[0], addr view.view[0], view.len)
     when T is Natural:
       for i in view:
-        aux &= $i
+        aux &= $i & " "
     return aux
 
 proc overwriteWith*(view: View[char], str: string, allocator: HostAllocator = hostAllocator) {.raises: [].} =

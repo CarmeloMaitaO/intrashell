@@ -20,7 +20,7 @@
 
   *THIS OBJECT IS MEANT TO BE LANGUAGE INDEPENDENT*. That way, No matter the
   language the modules or the main binary are written in, they will be able to
-  communicate without problems.
+  communicate without problems, as long as the string are encoded in UTF-8.
 
   Operators, iterators and procedures are provided to give the user the
   necessary calls to be able to handle the `Buffer` and `DataView` as
@@ -53,8 +53,11 @@
  single, flat structure
 ]#
 
+import unishell/view
+export allocator, view
+
 type
-  Buffer* = ptr UncheckedArray[char]
+  Buffer* = Darray[char]
     ##[
       Simulates a `seq[string]` in a flat structure. It is structured in the following way:
 
@@ -71,95 +74,85 @@ type
       A unified view for all the strings contained within the Buffer. It uses
       a sequence of character views to point to the actual strings.
     ]##
-    strings: seq[View[char]]
     len: Natural
+    offsets: View[Natural]
     cap: Natural
+    strings: seq[View[char]]
 
-proc deallocBuffer*(buffer: var Buffer, allocator: HostAllocator) {.raises: [].} =
-  discard allocator(buffer, 0, DEALLOC)
-
-proc deallocToAllocBuffer*(buffer: var Buffer, allocator: HostAllocator, size: Natural) {.raises: [].} =
-  discard allocator(buffer, size, DEALLOCTOALLOC)
-
-proc newView*[T](address: pointer, kind: T, len: Natural): View[T] {.raises: [].} =
-  result.view = cast[ptr UncheckedArray[kind]](address)
-  result.len = len
-
-proc newView*[T](buffer: var Buffer, kind: T, startIndex: Natural, endIndex: Natural): View[T] {.raises: [].} =
-  result = newView(
-    addr buffer[startIndex], # Address of the starting index
-    kind,
-    (endIndex-startIndex)+1  # Length = difference between indexes + starting index
-  )
-
-proc newBufferView*(buffer: var Buffer): BufferView {.raises: [].} =
+proc newBuffer*(buffer: var Buffer, strings: seq[string], allocator: HostAllocator = hostAllocator) {.raises: [].} =
   var
-    auxViewNumeric: View[int]
-    auxViewChar: View[char]
-  if buffer != nil:
-    auxViewNumeric = buffer.newView[int](0, 0)
-    auxViewNumeric[0]
-  else:
-    result.len = 0
-    result.cap = 0
-
-proc getOffsetsSize*(len: Natural): Natural {.raise: [].} =
-  # ((length field + Start offset) + number of strings/offsets) * size of an integer
-  result = (2 + len)*(sizeOf(int))
-
-proc getDataSize*(strings: seq[string]): Natural {.raises: [].} =
-  result = 0
-  for i in strings:
-    result += i.len()
-
-proc getBufferSize*(offsetsSize: Natural, dataSize: Natural): Natural {.raises: [].} =
-  result = 0
-  result += offsetsSize # The offsets field
-  result += dataSize    # The data field
-
-proc getOffsetsView*(buffer: var Buffer, len: Natural): OffsetsView {.raises: [].} =
-  # This one is used to populate the fields on creation
-  result.offsets = cast[ptr UncheckedArray[Natural]](buffer)
-  result.len = len+2 # len + (length field + start offset)
-
-proc getOffsetsView*(buffer: var Buffer): OffsetsView {.raises: [].} =
-  # This one is used to get only the offsets of the buffer
-  result.offsets = cast[ptr UncheckedArray[Natural]](buffer)
-  if result.offsets != nil:
-    result.len = result.offsets[0]
-  else:
-    result.len = 0
-  if result.len > 0:
-    result.offsets = cast[ptr UncheckedArray[Natural]](
-      addr result.offsets[1]
-    )
-  else:
-    result.offsets = nil
-
-proc getDataView*(buffer: var Buffer, view: OffsetsView, index: Natural): DataView {.raises: [].} =
-  let trueIndex: int = index+1
-  result.data = cast[ptr UncheckedArray[char]](addr buffer[view.offsets[index]])
-  result.len = view.offsets[trueIndex] + 1 - view.offsets[index]
-
-proc getDataViews*(buffer: var Buffer): seq[DataView] {.raises: [].} =
-  var auxOffsetsView: OffsetsView = buffer.getOffsetsView()
-
-proc populateOffsets*(view: var OffsetsView, len: Natural, start: Natural, strings: seq[string]) {.raises: [].} =
-  view.offsets[0] = len
-  var aux: Natural = start
-  for index, item in strings:
-    view.offsets[index+1] = aux
-    aux += item.len()
-
-proc newBuffer*(buffer: var Buffer, allocator: HostAllocator, strings: seq[strings]) {.raises: [].} =
-  let
     len: Natural = strings.len()
-    sizeOfOffsets: Natural = getOffsetsSize(len)
-    sizeOfData: Natural = getDataSize(strings)
-    sizeOfBuffer: Natural = getBufferSize(sizeOfOffsets, sizeOfData)
-  buffer.deallocToAllocBuffer(allocator, sizeOfBuffer)
-  var auxOffsetsView: OffsetsView
+    sizeOfOffsets: Natural = (2 + len) * sizeOf(int) # Includes lenght field and start offset
+    sizeOfData: Natural = 0
+    sizeOfBuffer: Natural = 0
+    counter1: Natural = 0
+    counter2: Natural = 0
+    auxView1: View[Natural]
+    auxView2: View[char]
+  for i in strings:
+    sizeOfData += i.len()
+  sizeOfBuffer = sizeOfOffsets + sizeOfData
+  buffer.dallocDarray(sizeOfBuffer, allocator)
   if len > 0:
-    auxOffsetsView = buffer.getOffsetsView(len)
-    auxOffsetsView.populateOffsets(len, sizeOfOffsets, strings)
-    
+    auxView1 = buffer.newAlternateView(0, sizeOfOffsets)
+    auxView1[0] = len # Number of strings within the buffer
+    auxView1[1] = sizeOfOffsets # Offset to the first character byte in the buffer
+    counter1 = sizeOfOffsets # Current offset
+    counter2 = 2 # Current index
+    for i in strings:
+      counter1 += i.len()
+      auxView1[counter2] = counter1
+      counter2.inc()
+    auxView1 = auxView1.newView(1, len)
+    for i in 0 ..< auxView1.len(): # TO FIX
+      auxView2 = buffer.newView(auxView1[i], auxView1[i+1] - auxView1[i])
+      auxView2.overwriteWith(strings[i], allocator)
+
+proc newBufferView*(buffer: Buffer): BufferView {.raises: [].} =
+  if not (buffer.isNil()):
+    result.offsets = buffer.newAlternateView(1)
+    result.len = result.offsets[0]
+    if result.len > 0:
+      result.offsets = buffer.newAlternateView(sizeOf(int), result.len)
+      result.cap = result.offsets[result.len-1]-1
+  for i in 0 ..< result.offsets.len():
+    result.strings.add(
+      buffer.newView(
+        result.offsets[i],
+        result.offsets[i+1] - result.offsets[i]
+      )
+    )
+
+proc `[]`*(view: BufferView, index: Natural): View[char] {.raises: [].} =
+  return view.strings[index]
+
+iterator items*(view: BufferView): View[char] {.raises: [].} =
+  for i in view.strings:
+    yield i
+
+proc find*(view: BufferView, item: View[char]): int {.raises: [].} =
+  result = 0
+  for i in view:
+    if i == item:
+      return result
+    inc(result)
+  return -1
+
+proc find*(view: BufferView, item: string): int {.raises: [].} =
+  result = 0
+  for i in view:
+    if $i == item:
+      return result
+    inc(result)
+  return -1
+
+proc contains*(view: BufferView, item: View[char]): bool {.raises: []} =
+  find(view, item) >= 0
+
+proc contains*(view: BufferView, item: string): bool {.raises: []} =
+  find(view, item) >= 0
+
+proc toSeq*(view: BufferView): seq[string] {.raises: [].} =
+  result = @[]
+  for i in view:
+    result.add($i)
