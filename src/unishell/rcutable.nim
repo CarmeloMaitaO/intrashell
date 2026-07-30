@@ -35,6 +35,8 @@
   echo x[0], x[1] # "Hello World!"
   ```
 ]##
+when not defined(gcArc) and not defined(gcOrc) and not defined(gcAtomicArc):
+  {.error: "rcutable.nim requires to be compiled with --mm:arc, --mm:orc or --mm:atomicArc".}
 import std/[
   tables,
   atomics,

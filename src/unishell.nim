@@ -2,7 +2,7 @@
 A lightweight library for dynamically loading and managing nested, concurrent state-machines.
 ]##
 when not defined(gcArc) and not defined(gcOrc) and not defined(gcAtomicArc):
-  {.error: "Unishell requires to be compiled with --mm:arc, --mm:orc or --mm:atomicArc".}
+  {.error: "unishell.nim requires to be compiled with --mm:arc, --mm:orc or --mm:atomicArc".}
 
 import unishell/[
   rcutable,
@@ -11,24 +11,13 @@ import unishell/[
 ]
 export
   buffer,
-  module.INITCOMMAND,
-  module.SHUTDOWNCOMMAND,
-  module.WrongParameters,
-  module.CommandFailed,
-  module.Version,
-  module.newVersion,
-  module.UserSuppliedDispatch,
-  module.unishellQuit,
-  module.dispatchBoilerplate,
-  module.ModuleDescription,
-  module.newModuleDescription,
-  module.castPointerToString,
-  module.castStringToPointer
+  module
+import std/paths
 
 type
   UnishellObj* = object
-    registry*: RcuTableRef[string, Module]
-    pointerToItself*: string
+    registry: RcuTableRef[string, Module]
+    pointerToItself: string
   UnishellPtr* = ptr UnishellObj
   Unishell* = ref UnishellObj
 
@@ -86,9 +75,14 @@ type
     UPDATE,
     ROLLBACK
   UnishellOperation* = ref object
+    identity: string
     case kind: UnishellOperationType
-    of UNLOAD: identity: string
-    of LOAD, UPDATE, ROLLBACK: description: ModuleDescription
+    of UNLOAD:
+      discard
+    of LOAD, UPDATE, ROLLBACK:
+      version: Version
+      dispatch: ImportedDispatch
+      path: Path
 
 proc newOperation*(
   kind: UnishellOperationType,
@@ -102,17 +96,35 @@ proc newOperation*(
 
 proc newOperation*(
   kind: UnishellOperationType,
-  description: ModuleDescription
+  identity: string,
+  version: Version,
+  path: Path
 ): UnishellOperation {.raises: [].} =
   case kind
   of UNLOAD:
-    result = UnishellOperation(kind: UNLOAD, identity: description.identity)
+    result = UnishellOperation(kind: UNLOAD, identity: identity, version: version, path: path)
   of LOAD:
-    result = UnishellOperation(kind: LOAD, description: description)
+    result = UnishellOperation(kind: LOAD, identity: identity, version: version, path: path)
   of UPDATE:
-    result = UnishellOperation(kind: UPDATE, description: description)
+    result = UnishellOperation(kind: UPDATE, identity: identity, version: version, path: path)
   of ROLLBACK:
-    result = UnishellOperation(kind: ROLLBACK, description: description)
+    result = UnishellOperation(kind: ROLLBACK, identity: identity, version: version, path: path)
+
+proc newOperation*(
+  kind: UnishellOperationType,
+  identity: string,
+  version: Version,
+  dispatch: ImportedDispatch
+): UnishellOperation {.raises: [].} =
+  case kind
+  of UNLOAD:
+    result = UnishellOperation(kind: UNLOAD, identity: identity, version: version, dispatch: dispatch)
+  of LOAD:
+    result = UnishellOperation(kind: LOAD, identity: identity, version: version, dispatch: dispatch)
+  of UPDATE:
+    result = UnishellOperation(kind: UPDATE, identity: identity, version: version, dispatch: dispatch)
+  of ROLLBACK:
+    result = UnishellOperation(kind: ROLLBACK, identity: identity, version: version, dispatch: dispatch)
 
 proc execute(unishell: Unishell, operation: UnishellOperation, slot: int) =
   var
