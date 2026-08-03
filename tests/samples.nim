@@ -1,52 +1,57 @@
-when defined(unishellTestStateless1):
+when defined(testA): ##########################################
+  # Plain module
+  import unishell/module
+  proc someProc(input: seq[string]): seq[string] =
+    return input
+  dispatchBoilerplate(someProc)
+elif defined(testB1): #########################################
+  # Stateless 1
   import unishell
-
   proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed] .} =
-    result = parameters
-
+    return parameters
   dispatchBoilerplate(entryPoint)
-elif defined(unishellTestStateless2):
+elif defined(testB2): #########################################
+  # Stateless 2
   import unishell
-
   proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed] .} =
-    result = parameters & parameters
-
+    return (parameters & parameters)
   dispatchBoilerplate(entryPoint)
-elif defined(unishellTestStateful1):
+elif defined(testC1): #########################################
+  # Stateful 1
   import unishell
   import std/strutils
-
   var
     ushell: UnishellPtr
     state: int
-
   proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed] .} =
     result = @[]
     var
       command: string = parameters[0]
       arguments = 1..high(parameters)
     case command
-    of INITCOMMAND:
-      ushell = castStringToUnishellPtr(parameters[1])
+    of "INIT":
+      try:
+        ushell = castStringToUnishellPtr(parameters[1])
+      except Exception:
+        discard
       state = 0
-    of SHUTDOWNCOMMAND:
-      unishellQuit()
+    of "SHUTDOWN":
+      ushell = nil
+      state = 0
     of "set":
-      if high(arguments) < 1:
-        raise newException(WrongParameters, "This command needs an argument")
-      state = parameters[1].parseInt()
+      try:
+        state = parameters[1].parseInt()
+      except Exception:
+        state = 0
     of "get":
-      result.add(state)
+      result = @[$state]
     of "call":
-      if high(arguments) < 1:
-        raise newException(WrongParameters, "This command needs an argument")
       result = ushell.shell(parameters[arguments])
-
   dispatchBoilerplate(entryPoint)
-elif defined(unishellTestStateful2):
+elif defined(testC2): #########################################
+  # Stateful 2
   import unishell
   import std/strutils
-
   proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed] .} =
     result = @[]
     var
@@ -54,8 +59,5 @@ elif defined(unishellTestStateful2):
       arguments = 1..high(parameters)
     case command
     of "reflect":
-      if high(arguments) < 1:
-        raise newException(WrongParameters, "This command needs an argument")
       result = parameters[arguments]
-
   dispatchBoilerplate(entryPoint)

@@ -2,7 +2,7 @@ import unishell/module
 import std/paths
 
 var
-  file: Path = getCurrentDir() / Path("tests") / Path("example.so")
+  file: Path = getCurrentDir() / Path("tests") / Path("sampleA.so")
 
 proc someProc(input: seq[string]): seq[string] =
   return input

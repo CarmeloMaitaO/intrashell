@@ -81,8 +81,9 @@ type
       discard
     of LOAD, UPDATE, ROLLBACK:
       version: Version
-      dispatch: ImportedDispatch
-      path: Path
+      # Only one of the following should have a value
+      dispatch: ImportedDispatch # This one for VTables
+      path: Path # This one for dynamic modules
 
 proc newOperation*(
   kind: UnishellOperationType,
@@ -92,7 +93,7 @@ proc newOperation*(
   of UNLOAD:
     result = UnishellOperation(kind: UNLOAD, identity: identity)
   else:
-    raise newException(ValueError, "To LOAD, UPDATE or ROLLBACK a module, you need to give a proper ModuleDescription")
+    raise newException(ValueError, "To LOAD, UPDATE or ROLLBACK a module, you need to also supply a path or an ImportedDispatch")
 
 proc newOperation*(
   kind: UnishellOperationType,
@@ -102,7 +103,7 @@ proc newOperation*(
 ): UnishellOperation {.raises: [].} =
   case kind
   of UNLOAD:
-    result = UnishellOperation(kind: UNLOAD, identity: identity, version: version, path: path)
+    result = UnishellOperation(kind: UNLOAD, identity: identity)
   of LOAD:
     result = UnishellOperation(kind: LOAD, identity: identity, version: version, path: path)
   of UPDATE:
@@ -118,7 +119,7 @@ proc newOperation*(
 ): UnishellOperation {.raises: [].} =
   case kind
   of UNLOAD:
-    result = UnishellOperation(kind: UNLOAD, identity: identity, version: version, dispatch: dispatch)
+    result = UnishellOperation(kind: UNLOAD, identity: identity)
   of LOAD:
     result = UnishellOperation(kind: LOAD, identity: identity, version: version, dispatch: dispatch)
   of UPDATE:
@@ -126,33 +127,24 @@ proc newOperation*(
   of ROLLBACK:
     result = UnishellOperation(kind: ROLLBACK, identity: identity, version: version, dispatch: dispatch)
 
-proc execute(unishell: Unishell, operation: UnishellOperation, slot: int) =
-  var
-    identity: string
-    versionRegistry: Version
-    versionOperation: Version
+proc loadModule(operation: UnishellOperation, extraArg: string): Module {.raises: [ValueError].} =
+  if operation.dispatch != nil:
+    return loadModule(operation.identity, operation.version, operation.dispatch, extraArg)
+  else:
+    return loadModule(operation.identity, operation.version, DYNAMIC, operation.path, extraArg)
+
+proc execute(unishell: Unishell, operation: UnishellOperation, slot: int) {.raises: [ValueError].} =
   case operation.kind
   of LOAD:
-    identity = operation.description.identity
-    unishell.registry[slot, identity] = loadModule(operation.description)
-    (unishell.registry[slot, identity]).moduleInit(unishell.pointerToItself)
+    unishell.registry[slot, operation.identity] = loadModule(operation, unishell.pointerToItself)
   of UNLOAD:
-    identity = operation.identity
-    unishell.registry.del(slot, identity)
+    unishell.registry.del(slot, operation.identity)
   of UPDATE:
-    identity = operation.description.identity
-    versionOperation = operation.description.version
-    versionRegistry = unishell.registry[identity].version
-    if versionRegistry < versionOperation:
-      unishell.registry[slot, identity] = loadModule(operation.description)
-      (unishell.registry[slot, identity]).moduleInit(unishell.pointerToItself)
+    if unishell.registry[operation.identity].version < operation.version:
+      unishell.registry[slot, operation.identity] = loadModule(operation, unishell.pointerToItself)
   of ROLLBACK:
-    identity = operation.description.identity
-    versionOperation = operation.description.version
-    versionRegistry = unishell.registry[identity].version
-    if versionRegistry > versionOperation:
-      unishell.registry[slot, identity] = loadModule(operation.description)
-      (unishell.registry[slot, identity]).moduleInit(unishell.pointerToItself)
+    if unishell.registry[operation.identity].version > operation.version:
+      unishell.registry[slot, operation.identity] = loadModule(operation, unishell.pointerToItself)
 
 proc processOperations*(unishell: Unishell, operations: varargs[UnishellOperation]): seq[string] =
   var errors: seq[string]
