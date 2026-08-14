@@ -1,11 +1,5 @@
 # Intrashell
-```mermaid
-graph LR
-    Host[Host Binary] --> LibA[Shared Library A]
-    Host --> LibB[Shared Library B]
-    LibA --> LibB
-    LibB --> LibA
-```
+
 A lightweight library for creating, loading, and orchestrating dynamic and static module state-machines in Nim.
 
 ## Table of Contents
