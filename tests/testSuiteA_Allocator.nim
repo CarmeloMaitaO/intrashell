@@ -1,4 +1,4 @@
-import unishell/allocator
+import intrashell/allocator
 
 var
   aux: ptr UncheckedArray[char] = nil

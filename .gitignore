@@ -20,4 +20,5 @@ tests/testSuiteB_View
 tests/testSuiteC_Buffer
 tests/testSuiteC_RCUTable
 tests/testSuiteD_Module
+/docs
 

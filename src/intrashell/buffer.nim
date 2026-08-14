@@ -28,19 +28,22 @@
   of:
 
   ```nim
-  var x: Buffer = createBuffer(@["These", "are", "some", "strings"])
+  var x: BufferView = newBufferView(
+    newBuffer(@["These", "are", "some", "strings"])
+  )
 
   # Use of `in` and `$` operators
   for i in x:
     echo $i
 
   # Use of the `[]` operator and comparison to `string` types
-  if x[0] == "This":
+  if x[0] == "These":
     echo $x[0], $x[3], $x[1], $x[3] # "These strings are strings"
 
   # Conversion to `seq[string]`
   var y: seq[string] = toSeq(x)
-  assert x == y # True
+  for i in y:
+    echo i
   ```
 ]##
 
@@ -48,12 +51,7 @@
 # BUFFER OBJECT
 # =============================================================================
 
-#[
- The `Buffer` object is meant to simulate a `seq[string]` type of Nim inside a
- single, flat structure
-]#
-
-import unishell/view
+import intrashell/view
 export allocator, view
 
 type
@@ -61,13 +59,13 @@ type
     ##[
       Simulates a `seq[string]` in a flat structure. It is structured in the following way:
 
-      Starting index
+      |     Length   |          Offsets           |               Data         |
+      | ------------ | -------------------------- | -------------------------- |
+      | sizeOf(int)  | sizeOf(int) * (Length + 1) | max(Offsets) - min(Offsets)
 
-      0                        \ Length (number of contained strings)
-      sizeOf(int)              \ Offsets (indexes that mark the end of the string).
-                               \ And additional offset is put at the start to mark the
-                               \ first index for the data part
-      sizeOf(int)*(Length + 1) \ Data. Starts after the length and offsets fields
+      - Length: indicates the number of contained strings.
+      - Offsets: indexes that mark the end of each string.
+      - Data: The contained strings.
     ]##
   BufferView* = object
     ##[

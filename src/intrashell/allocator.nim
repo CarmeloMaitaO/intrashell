@@ -2,11 +2,15 @@
 # EXTERNAL ALLOCATOR
 # =============================================================================
 
-#[
+##[
+ This is the allocator procedure; it's function is to make the host's allocator
+ available to modules, so the memory used by the module is allocated and freed
+ in the host.
+ 
  Currently, it is implemented as a case statement in order to make it easier
  to export to other languages. It might be turned into a VTable with pointers
  to the respective memory management procedures later on.
-]#
+]##
 
 type
   HostAllocatorAction* = enum

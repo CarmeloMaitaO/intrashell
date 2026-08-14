@@ -1,27 +1,27 @@
 when defined(testA): ##########################################
   # Plain module
-  import unishell/module
-  proc someProc(input: seq[string]): seq[string] =
+  import intrashell/module
+  proc someProc(input: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
     return input
   dispatchBoilerplate(someProc)
 elif defined(testB1): #########################################
   # Stateless 1
-  import unishell
+  import intrashell
   proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed] .} =
     return parameters
   dispatchBoilerplate(entryPoint)
 elif defined(testB2): #########################################
   # Stateless 2
-  import unishell
+  import intrashell
   proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed] .} =
     return (parameters & parameters)
   dispatchBoilerplate(entryPoint)
 elif defined(testC1): #########################################
   # Stateful 1
-  import unishell
+  import intrashell
   import std/strutils
   var
-    ushell: UnishellPtr
+    ushell: IntrashellPtr
     state: int
   proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed] .} =
     result = @[]
@@ -31,7 +31,7 @@ elif defined(testC1): #########################################
     case command
     of "INIT":
       try:
-        ushell = castStringToUnishellPtr(parameters[1])
+        ushell = castStringToIntrashellPtr(parameters[1])
       except Exception:
         discard
       state = 0
@@ -50,8 +50,7 @@ elif defined(testC1): #########################################
   dispatchBoilerplate(entryPoint)
 elif defined(testC2): #########################################
   # Stateful 2
-  import unishell
-  import std/strutils
+  import intrashell
   proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed] .} =
     result = @[]
     var

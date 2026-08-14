@@ -38,3 +38,6 @@ proc compileSampleModules() =
 
 before test:
   compileSampleModules()
+
+task docgen, "Generate the documentation for this project":
+  run "nimble doc --path:./src --project --index:on --outdir:docs ./src/intrashell.nim"

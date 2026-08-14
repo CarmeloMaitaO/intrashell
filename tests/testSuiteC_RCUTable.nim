@@ -1,4 +1,4 @@
-import unishell/rcutable
+import intrashell/rcutable
 
 type TestObj = ref object
   field: int

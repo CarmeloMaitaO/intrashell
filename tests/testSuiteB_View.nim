@@ -1,4 +1,4 @@
-import unishell/view
+import intrashell/view
 
 var
   darray1: Darray[Natural]

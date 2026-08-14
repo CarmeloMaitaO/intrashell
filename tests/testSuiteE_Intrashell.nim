@@ -1,8 +1,8 @@
-import unishell
+import intrashell
 import std/paths
 
 var
-  aux: Unishell = newUnishell()
+  aux: Intrashell = newIntrashell()
   dir: Path = getCurrentDir() / Path("tests")
   sampleA: Path = dir / Path("sampleA.so")
   sampleB1: Path = dir / Path("sampleB1.so")

@@ -1,110 +1,189 @@
-# Unishell
+# Intrashell
+```mermaid
+graph LR
+    Host[Host Binary] --> LibA[Shared Library A]
+    Host --> LibB[Shared Library B]
+    LibA --> LibB
+    LibB --> LibA
+```
+A lightweight library for creating, loading, and orchestrating dynamic and static module state-machines in Nim.
 
-A library for dynamically loaded, concurrent state-machines, that expose a single interface for interaction and:
-- Operate over the same resources (variables, data structures, database connections, ...).
-- Inject dependencies from shared libraries at runtime.
-- Are deployed in:
-  - Servers.
-  - Desktop Applications.
-  - Unikernels (that have a `dlopen()` or equivalent system call implemented).
+## Table of Contents
+
+- [Key Features](#key-features)
+- [Architectural & Team Benefits](#architectural--team-benefits)
+- [What it does](#what-it-does)
+- [Minimal Example](#minimal-example)
+- [Module creation](#module-creation)
+  - [Stateless Module Example](#stateless-module-example)
+  - [Stateful & Host-Calling Module Example](#stateful--host-calling-module-example)
+- [Implementation details](#implementation-details)
+- [Notes](#notes)
+- [AI Disclaimer](#ai-disclaimer)
+
+## Key Features
+
+- **Zero-Downtime Updates & Rollbacks**: Inject, hot-update, or rollback dependencies at runtime using semantic versioning (`Version`).
+- **Unified Interface**: Modules are built as state-machines registered under a single registry with a common interface.
+- **Concurrent RCU Registry**: Read and modify the module registry safely across threads and async tasks backed by a lockless RCU hash table.
+- **Shared Resource Gateways**: Encapsulate stateful resources (variables, data structures, database connections, buffers, ...) behind isolated modules.
+- **Inter-Module Communication**: Enable modules to invoke each other and dispatch commands using host registry pointers.
+- **Binary-Safe FFI (`Buffer`)**: Transfer binary data, UTF-8 strings, and raw pointers without null-byte (`\0`) truncation across FFI boundaries.
+- **Deterministic Lifecycle Hooks**: Automated `INIT` initialization (passing host pointers) and `SHUTDOWN` cleanup signals on module load/unload.
+- **Shared Library Compatibility**: Runs on any operating system or execution environment that supports shared libraries (`.so`, `.dll`, `.dylib`).
+- **Language Independent (WIP)**: Built on a flat C-compatible `Buffer` memory layout and standard `cdecl` ABI, allowing modules to be authored in any language supporting standard C FFI bindings (such as C, C++, Rust, or Zig).
+
+## Architectural & Team Benefits
+
+- **State-Machine Design Discipline**: Simplifies overall architecture by offloading business logic into pure, self-contained state-machines in shared libraries (`.so`, `.dll`). Minimal host binaries stay clean, while strict state-machine boundaries eliminate code smells and architectural debt.
+- **Self-Contained Binary Packaging**: Simplifies deployment down to standalone shared libraries (`.so`, `.dll`), which can statically link internal dependencies for zero-friction, self-contained distribution.
+- **Two-Way IP Confidentiality**: Protects proprietary source code without sharing repository access. Host owners can outsource modules by providing only OS/CPU target specs, while third-party vendors can ship pre-compiled binaries without revealing module source code.
+- **Decoupled Team Workflows**: Isolated module boundaries allow separate teams and contractors to develop, test, and deploy features independently without merge conflicts or tight build-time dependencies, enabling smooth, risk-free updates.
+- **Lightweight Alternative to Containers & Script Runtimes**: Serves as a native structural alternative to containers and JS/WASM runtimes specifically for module hot-swapping, component isolation, and plugin dispatch—delivering container-like modularity without virtualization daemons or JS engine memory overhead.
+
 
 ## What it does
 
-It provides a new `Unishell` object that handles the loading, managing, and initializing of modules in the form of shared libraries (`.dll` or `.so`). This object provides:
+It provides an `Intrashell` object that handles the loading, managing, and
+initializing of modules in the form of compiled shared libraries (`.dll`, `.so`,
+`.dylib`) or static procedures. This object provides:
 
-- A `updateModules()` procedure that automatically loads the specified module from the inputted file.
-- A `shell()` procedure that interprets a variable number of strings as a command (module), subcommand and its arguments, and returns a sequence of strings as output.
+- A `processOperations()` procedure that executes batch module lifecycle operations (`LOAD`, `UNLOAD`, `UPDATE`, `ROLLBACK`) created via `newOperation()`. It returns a sequence of strings (`seq[string]`) that contains any raised errors.
+- A `shell()` procedure that interprets a variable number of strings as a command (module identity), subcommand, and its arguments, returning a sequence of strings (`seq[string]`) as output.
 
 ### Minimal Example
 
 ```nim
-import unishell
+# plugin.so
+import intrashell
+proc yourProc(input: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
+  return input
 
-# 1. Create an Unishell object
-
-var u = newUnishell()
-
-# 2. Load a Shared Library-based module
-# Assuming "plugin.so" exports ``
-u.updateModules("plugin.so")
-
-# 3. Dispatch commands
-let output = u.shell("module", "subcommand", "arg")
-echo output[0] # Read the first string of the output
-
-# 4. Unload all modules (shutdown)
-discard
+dispatchBoilerplate(yourProc)
 ```
 
-### Why
-
-A lot of projects tend to be a composition of multiple state-machines chained together, but as they all are mutually dependent on the current API of each module, simple changes and small mistakes can break the entire project, refactoring them becomes more expensive as the codebase evolves, and adding concurrency and parallelism mixed up with access to the same resources (variables, data structures, buffers, etc) might force the developer to spend more time debugging than writing business logic. There are also codebases that require:
-
-- Dynamic injection of dependencies and minimum downtime.
-- Certain degree of confidentiality, and need to provide the programmers only the necessary information for them to work.
-- Strict separation of concern.
-- Fast and frequent iterations that might limit the time available for debugging, and may involve heavy use of AI.
-
-Taking this into consideration, separating the project into smaller, external modules is a logical conclusion, but then the binding and management of said modules becomes a problem on its own; but there is a type of software that has this very same architecture without these disadvantages: Shell scripts. Unishell, inspired by shell scripts, tries to solve these problems by providing a single `shell()` interface to all modules.
-
-Unishell simplifies writing concurrent/threaded code by allowing you to encapsulate resources (like database connections or shared buffers) behind specific modules along with their necessary guards/locks. Other modules can then access these resources safely by invoking the encapsulated procedures through the `shell()` interface, abstracting away complex lock management and reducing race conditions.
-
-Unishell also provides automatic:
-
-- Dependency (module) injection support at runtime by use of shared libraries or VTables
-- Module versioning and safe updates
-- Deterministic cleanup and resource management
-
-### Is this a framework? 
-
-No, Unishell is intended to be a thin wrapper over common module managing operations. This way, it can be used for any sort of applications without restrictions, and be easily replaced once the architecture of the codebase becomes stable enough for refactoring; but the structure it gives and the specific APIs it imposes makes it almost a framework
-
-### Why/when to move from Unishell
-
-Unishell is intended to be some form of trampoline for codebases to jump quickly into writing business logic and get a stable architecture soon without accumulating technical debt, but it is not intended to be a permanent solution given that:
-
-- Even though the `shell()` API is really convenient and flexible, it is not the most optimized version of what your code could be, given that it suffers the same bottlenecks as shell scripts: inputting strings require additional sanitization and parsing of the received data, which quickly increases if you also pipe operations between modules
-- Forcing the use, and limiting the modules to a handful of pre-stablished procedures might be too restrictive for your use case, even more if you want to create objects and not buffers of data from your modules
-- The underlying logic to glue all together might be too bloated for your needs
-
-Still, if your use case *is* what Unishell solves, or at least is very similar, you might want to either stick to Unishell or fork the project to accommodate it to your specific needs; Unishell was programmed with this in mind, and it is encouraged.
-
-## Module creation
-
-Modules can be implemented as **VTables** (compile-time) or **Shared Libraries** (runtime-loaded). Both require the same attributes:
-
-### VTable-based Example (Compile-time)
 ```nim
-# VTable modules are constructed using `newModule`.
-# All attributes are required.
+# host.nim
+import intrashell
+import std/paths
 
-let myModule = newModule(
-  "my_cmd",
-  (1, 0, 0),
-  proc(u: UnishellInstance) = echo "Initializing...",
-  proc(m: ModuleInstance, p: seq[string]): seq[string] = @["Result"],
-  proc() = echo "Shutting down..."
+# 1. Create an Intrashell instance
+var myIntrashellInstance = newIntrashell()
+
+# 2. Declare some variables to hold the fields of the `Module` object
+let
+  cmd = "my_cmd" # Declare a name (identity) for the module
+  v1 = Version(major: 1, minor: 0, patch: 0) # Declare a version for the module
+  file = Path("plugin.so") # Declare the path to the file
+
+# 3. Load a Shared Library-based module dynamically
+discard myIntrashellInstance.processOperations(
+  newOperation(LOAD, cmd, v1, file)
+)
+
+# 4. Dispatch commands through the unified shell interface
+let output = myIntrashellInstance.shell(cmd, "subcommand", "arg")
+if output.len > 0:
+  echo output[0] # Read the first string of the output
+
+# 5. Declare static modules
+let v2 = Version(major: 2, minor: 0, patch: 0) # New version for the module
+
+proc yourProc(input: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
+  return input
+dispatchBoilerplate(yourProc) # This creates a wrapper procedure called `dispatch`
+
+# 6. Perform live hot-updates, rollbacks, or clean unloads
+discard myIntrashellInstance.processOperations(
+  newOperation(UPDATE, cmd, v2, dispatch),
+  newOperation(ROLLBACK, cmd, v1, file),
+  newOperation(UNLOAD, cmd)
 )
 ```
 
-### Shared Library-based Example (Runtime)
+## Module creation
+
+Modules expose an entry point procedure matching `UserSuppliedDispatch`
+(`proc(parameters: seq[string]): seq[string] {.raises: [WrongParameters,
+CommandFailed].}`) and use the `dispatchBoilerplate` template to automatically
+handle memory allocation, FFI signature export, and zero-copy data serialization
+via `Buffer`.
+
+### Stateless Module Example
+
 ```nim
-# Shared libraries must export the `moduleFactory` symbol.
-# Ensure your Nim module compiles with `--app:lib`.
+import intrashell
 
-proc init(u: UnishellInstance) = echo "Init"
-proc dispatch(m: ModuleInstance, p: seq[string]): seq[string] = @["Plugin output"]
-proc shutdown() = echo "Shutdown"
+proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
+  # Simply returns the input
+  return parameters
 
-proc moduleFactory*(): ModuleInstance {.exportc: "moduleFactory", dynlib.} =
-  newModule("my_plugin", (1, 0, 0), init, dispatch, shutdown)
+# Generate FFI bindings and dispatch glue
+dispatchBoilerplate(entryPoint) # creates a wrapper procedure called `dispatch`
+```
+
+### Stateful & Host-Calling Module Example
+
+When a module is loaded or unloaded, Intrashell automatically executes
+`INIT` and `SHUTDOWN` commands. During `INIT`, parameter 1 contains a
+pointer to the host `Intrashell` instance, which can be deserialized using
+`castStringToIntrashellPtr`:
+
+```nim
+import intrashell
+import std/strutils
+
+var
+  ushell: IntrashellPtr
+  state: int
+
+proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
+  result = @[]
+  let command = parameters[0]
+  let arguments = 1..high(parameters)
+
+  case command
+  of "INIT":
+    try:
+      # Retrieve pointer to host Intrashell instance
+      ushell = castStringToIntrashellPtr(parameters[1])
+    except Exception:
+      discard
+    state = 0
+  of "SHUTDOWN":
+    ushell = nil
+    state = 0
+  of "set":
+    try:
+      state = parameters[1].parseInt()
+    except Exception:
+      discard
+  of "get":
+    result = @[$state]
+  of "call":
+    # Safely invoke another module registered in the host Intrashell instance
+    if ushell != nil:
+      result = ushell.shell(parameters[arguments])
+
+dispatchBoilerplate(entryPoint)
 ```
 
 ## Implementation details
 
-Unishell uses an atomic unsigned integer to hold both a counter of read
-operations and two flags for the current state of the object
+Intrashell relies on two main components to achieve thread safety and low FFI overhead:
+
+- **RCU Table (`RcuTableRef`)**: A lockless-reader hash table. Readers acquire a reference to the active table with zero locking overhead, relying on Nim's ARC/ORC/AtomicARC reference counting to prevent premature deallocation. Writers acquire a single lock, copy the inactive table, swap the atomic index (`activeSlot`), and allow old references to be freed when readers finish.
+- **Flat Buffer (`Buffer` / `Darray[char]`)**: A flat, contiguous memory structure used to pack multiple strings into a single chunk of memory for FFI. It avoids standard C strings (`cstring`) to prevent truncation on null bytes (`\0`), making it safe for binary payloads, pointers, and UTF-8 data across language boundaries.
 
 ## Notes
 
-- Compile dynamic modules with `-d:useMalloc --app:lib` and, either `--gc:orc`, `--gc:arc` or `--gc:atomicArc`
+- Requires Nim **2.0.0** or newer.
+- Compile Intrashell and modules with memory management set to `--mm:arc`, `--mm:orc`, or `--mm:atomicArc`.
+- Compile dynamic modules (shared libraries) with `-d:useMalloc --app:lib`
+
+## AI Disclaimer
+
+AI assistance was used exclusively for drafting, refining, and formatting
+documentation files (`README.md` and `CONTRIBUTING.md`). The core Intrashell
+library, memory management, FFI bindings, and test suites were designed and
+written entirely by human developers.

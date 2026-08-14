@@ -1,5 +1,11 @@
-import unishell/allocator
+import intrashell/allocator
 export allocator
+
+##[
+  This is the helper module for allocating memory using the Allocator module
+  creating views to it. Given that the Buffer type only supports numbers and
+  characters, this module was made to only be able to manage those types.
+]##
 
 type
   AllowedTypes* = (char or Natural)

@@ -8,8 +8,8 @@
   a single lock that is only used by writers to avoid clashing with each other.
   This means that one table should be active and contain actual information,
   while the other, the inactive one, will be reserved to, on writes, perform a
-  copy of the current active table, modify it, and become the active one. The
-  specific behaviour is the following:
+  copy of the current active table, modify it, and become the new active one.
+  The specific behaviour is the following:
 
   - Writers: copy the contents of the active table on the inactive table, modify
     the copy, swap the value of the active index to change the active table,
@@ -20,8 +20,6 @@
     deallocation of the table while a write is being performed or has already
     happened, as the table will only be deallocated after all readers have
     finished and the counter for the reference reaches zero.
-
-  *THE `RcuTable` OBJECT IS NOT READY TO HANDLE COPIES, SO AVOID DUPLICATING IT*
 
   Example use:
 

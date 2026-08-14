@@ -1,4 +1,4 @@
-import unishell/buffer
+import intrashell/buffer
 
 var
   auxSeqStr1: seq[string] = @["Potato"]

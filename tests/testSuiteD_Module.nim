@@ -1,10 +1,10 @@
-import unishell/module
+import intrashell/module
 import std/paths
 
 var
   file: Path = getCurrentDir() / Path("tests") / Path("sampleA.so")
 
-proc someProc(input: seq[string]): seq[string] =
+proc someProc(input: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
   return input
 
 dispatchBoilerplate(someProc)
