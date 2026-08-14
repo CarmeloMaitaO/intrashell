@@ -178,6 +178,6 @@ Intrashell relies on two main components to achieve thread safety and low FFI ov
 ## AI Disclaimer
 
 AI assistance was used exclusively for drafting, refining, and formatting
-documentation files (`README.md` and `CONTRIBUTING.md`). The core Intrashell
+documentation files (`README.md`). The core Intrashell
 library, memory management, FFI bindings, and test suites were designed and
 written entirely by human developers.
