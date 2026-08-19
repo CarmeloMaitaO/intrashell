@@ -5,8 +5,6 @@ A lightweight library for using shared libraries as dynamic modules in Nim.
 This is achieved by enforcing a common procedure signature that simulates the
 behaviour of CLI applications (which are state-machines).
 
-[API](https://intrashell.carmelomaita.xyz)
-
 ## Installation
 
 `nimble install gh:CarmeloMaitaO/Intrashell`
