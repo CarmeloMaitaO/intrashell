@@ -36,7 +36,7 @@ Or add to your `.nimble` file:
   - [Stateless Module Example](#stateless-module-example)
   - [Stateful & Host-Calling Module Example](#stateful--host-calling-module-example)
 - [Implementation Details](#implementation-details)
-- [AI Disclaimer & Attributions](#ai-disclaimer-&-attributions)
+- [AI Disclaimer & Attributions](#[ai-disclaimer-&-attributions](#ai-disclaimer--attributions))
 
 ## What It Does
 
