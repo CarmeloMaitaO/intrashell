@@ -1,46 +1,51 @@
+![Intrashell](./docs/assets/logo.png)
 # Intrashell
 
-A lightweight library for creating, loading, and orchestrating dynamic and static module state-machines in Nim.
+A lightweight library for using shared libraries as dynamic modules in Nim.
+This is achieved by enforcing a common procedure signature that simulates the
+behaviour of CLI applications (which are state-machines).
+
+[API](https://intrashell.carmelomaita.xyz)
+
+## Installation
+
+`nimble install gh:CarmeloMaitaO/Intrashell`
+
+Or add to your `.nimble` file:
+
+`requires https://github.com/CarmeloMaitaO/intrashell`
+
+### Notes
+
+- Requires Nim **2.0.0** or newer
+- Must use with memory management set to either:
+  - `--mm:arc`
+  - `--mm:orc`
+  - `--mm:Atomicarc`
+- Modules in the form of shared libraries must use the flags `-d:useMalloc --app:lib`
+- The main binary and the modules can use different combinations of memory management, one does not constraint the other
 
 ## Table of Contents
 
-- [Key Features](#key-features)
-- [Architectural & Team Benefits](#architectural--team-benefits)
-- [What it does](#what-it-does)
-- [Minimal Example](#minimal-example)
+- [What It Does](#what-it-does)
+  - [Minimal Example](#minimal-example)
+- [Features](#features)
+  - [Technical Features](#technical-features)
+  - [Architectural & Team Benefits](#architectural--team-benefits)
 - [Module creation](#module-creation)
   - [Stateless Module Example](#stateless-module-example)
   - [Stateful & Host-Calling Module Example](#stateful--host-calling-module-example)
-- [Implementation details](#implementation-details)
-- [Notes](#notes)
-- [AI Disclaimer](#ai-disclaimer)
+- [Implementation Details](#implementation-details)
+- [AI Disclaimer & Attributions](#ai-disclaimer-&-attributions)
 
-## Key Features
+## What It Does
 
-- **Zero-Downtime Updates & Rollbacks**: Inject, hot-update, or rollback dependencies at runtime using semantic versioning (`Version`).
-- **Unified Interface**: Modules are built as state-machines registered under a single registry with a common interface.
-- **Concurrent RCU Registry**: Read and modify the module registry safely across threads and async tasks backed by a lockless RCU hash table.
-- **Shared Resource Gateways**: Encapsulate stateful resources (variables, data structures, database connections, buffers, ...) behind isolated modules.
-- **Inter-Module Communication**: Enable modules to invoke each other and dispatch commands using host registry pointers.
-- **Binary-Safe FFI (`Buffer`)**: Transfer binary data, UTF-8 strings, and raw pointers without null-byte (`\0`) truncation across FFI boundaries.
-- **Deterministic Lifecycle Hooks**: Automated `INIT` initialization (passing host pointers) and `SHUTDOWN` cleanup signals on module load/unload.
-- **Shared Library Compatibility**: Runs on any operating system or execution environment that supports shared libraries (`.so`, `.dll`, `.dylib`).
-- **Language Independent (WIP)**: Built on a flat C-compatible `Buffer` memory layout and standard `cdecl` ABI, allowing modules to be authored in any language supporting standard C FFI bindings (such as C, C++, Rust, or Zig).
-
-## Architectural & Team Benefits
-
-- **State-Machine Design Discipline**: Simplifies overall architecture by offloading business logic into pure, self-contained state-machines in shared libraries (`.so`, `.dll`). Minimal host binaries stay clean, while strict state-machine boundaries eliminate code smells and architectural debt.
-- **Self-Contained Binary Packaging**: Simplifies deployment down to standalone shared libraries (`.so`, `.dll`), which can statically link internal dependencies for zero-friction, self-contained distribution.
-- **Two-Way IP Confidentiality**: Protects proprietary source code without sharing repository access. Host owners can outsource modules by providing only OS/CPU target specs, while third-party vendors can ship pre-compiled binaries without revealing module source code.
-- **Decoupled Team Workflows**: Isolated module boundaries allow separate teams and contractors to develop, test, and deploy features independently without merge conflicts or tight build-time dependencies, enabling smooth, risk-free updates.
-- **Lightweight Alternative to Containers & Script Runtimes**: Serves as a native structural alternative to containers and JS/WASM runtimes specifically for module hot-swapping, component isolation, and plugin dispatch—delivering container-like modularity without virtualization daemons or JS engine memory overhead.
-
-
-## What it does
+![Explanatory Diagram](./docs/assets/explanatory-diagram.svg)
 
 It provides an `Intrashell` object that handles the loading, managing, and
-initializing of modules in the form of compiled shared libraries (`.dll`, `.so`,
-`.dylib`) or static procedures. This object provides:
+initializing of modules in the form of state-machines that receive and return
+a single sequence of strings `seq[string]` which are either compiled shared
+libraries (`.dll`, `.so`, `.dylib`) or static procedures. This object provides:
 
 - A `processOperations()` procedure that executes batch module lifecycle operations (`LOAD`, `UNLOAD`, `UPDATE`, `ROLLBACK`) created via `newOperation()`. It returns a sequence of strings (`seq[string]`) that contains any raised errors.
 - A `shell()` procedure that interprets a variable number of strings as a command (module identity), subcommand, and its arguments, returning a sequence of strings (`seq[string]`) as output.
@@ -61,7 +66,8 @@ dispatchBoilerplate(yourProc)
 import intrashell
 import std/paths
 
-# 1. Create an Intrashell instance
+# 1. Create an Intrashell instance. Must be global if it is going to be used by
+# multiple threads
 var myIntrashellInstance = newIntrashell()
 
 # 2. Declare some variables to hold the fields of the `Module` object
@@ -94,6 +100,30 @@ discard myIntrashellInstance.processOperations(
   newOperation(UNLOAD, cmd)
 )
 ```
+
+## Features
+
+### Technical Features
+
+- **Zero-Downtime Updates & Rollbacks**: Inject, hot-update, or rollback dependencies at runtime using semantic versioning (`Version`).
+- **Unified Interface**: Modules are built as state-machines registered under a single registry with a common interface.
+- **Concurrent RCU Registry**: Read and modify the module registry safely across threads and async tasks backed by a lockless RCU hash table.
+- **Shared Resource Gateways**: Encapsulate stateful resources (variables, data structures, database connections, buffers, ...) behind isolated modules.
+- **Inter-Module Communication**: Enable modules to invoke each other and dispatch commands using host registry pointers.
+- **Binary-Safe FFI (`Buffer`)**: Transfer binary data, UTF-8 strings, and raw pointers without null-byte (`\0`) truncation across FFI boundaries.
+- **Deterministic Lifecycle Hooks**: Automated `INIT` initialization (passing host pointers) and `SHUTDOWN` cleanup signals on module load/unload.
+- **Shared Library Compatibility**: Runs on any operating system or execution environment that supports shared libraries (`.so`, `.dll`, `.dylib`).
+- **Language Independent (WIP)**: Built on a flat C-compatible `Buffer` memory layout and standard `cdecl` ABI, allowing modules to be authored in any language supporting standard C FFI bindings (such as C, C++, Rust, or Zig).
+
+### Architectural & Team Benefits
+
+- **State-Machine Design Discipline**: Simplifies overall architecture by offloading business logic into pure, self-contained state-machines in shared libraries (`.so`, `.dll`). Minimal host binaries stay clean, while strict state-machine boundaries eliminate code smells and architectural debt.
+- **Self-Contained Binary Packaging**: Simplifies deployment down to standalone shared libraries (`.so`, `.dll`), which can statically link internal dependencies for zero-friction, self-contained distribution.
+- **Two-Way IP Confidentiality**: Protects proprietary source code without sharing repository access. Host owners can outsource modules by providing only OS/CPU target specs, while third-party vendors can ship pre-compiled binaries without revealing module source code.
+- **Decoupled Team Workflows**: Isolated module boundaries allow separate teams and contractors to develop, test, and deploy features independently without merge conflicts or tight build-time dependencies, enabling smooth, risk-free updates.
+- **Bug-shipping prevention**: the signature of the module's procedure forces developers to handle any potential error before shipping it to production, as the only accepted errors are custom ones (`WrongParameters` and `CommandFailed`)
+- **Lightweight Alternative to Containers & Script Runtimes**: Serves as a native structural alternative to containers and JS/WASM runtimes specifically for module hot-swapping, component isolation, and plugin dispatch—delivering container-like modularity without virtualization daemons or JS engine memory overhead.
+
 
 ## Module creation
 
@@ -137,14 +167,14 @@ proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters
   let arguments = 1..high(parameters)
 
   case command
-  of "INIT":
+  of INITCOMMAND:
     try:
       # Retrieve pointer to host Intrashell instance
       ushell = castStringToIntrashellPtr(parameters[1])
     except Exception:
       discard
     state = 0
-  of "SHUTDOWN":
+  of SHUTDOWNCOMMAND:
     ushell = nil
     state = 0
   of "set":
@@ -162,22 +192,26 @@ proc entryPoint(parameters: seq[string]): seq[string] {.raises: [WrongParameters
 dispatchBoilerplate(entryPoint)
 ```
 
-## Implementation details
+## Implementation Details
+
+![Architecture diagram](./docs/assets/architecture-diagram.svg)
 
 Intrashell relies on two main components to achieve thread safety and low FFI overhead:
 
 - **RCU Table (`RcuTableRef`)**: A lockless-reader hash table. Readers acquire a reference to the active table with zero locking overhead, relying on Nim's ARC/ORC/AtomicARC reference counting to prevent premature deallocation. Writers acquire a single lock, copy the inactive table, swap the atomic index (`activeSlot`), and allow old references to be freed when readers finish.
 - **Flat Buffer (`Buffer` / `Darray[char]`)**: A flat, contiguous memory structure used to pack multiple strings into a single chunk of memory for FFI. It avoids standard C strings (`cstring`) to prevent truncation on null bytes (`\0`), making it safe for binary payloads, pointers, and UTF-8 data across language boundaries.
 
-## Notes
+The entire codebase is less than 1500 LOC and it contains comments explaining
+the inner workings of each file, so go ahead and give it a read.
 
-- Requires Nim **2.0.0** or newer.
-- Compile Intrashell and modules with memory management set to `--mm:arc`, `--mm:orc`, or `--mm:atomicArc`.
-- Compile dynamic modules (shared libraries) with `-d:useMalloc --app:lib`
+## AI Disclaimer & attributions
 
-## AI Disclaimer
-
-AI assistance was used exclusively for drafting, refining, and formatting
-documentation files (`README.md`). The core Intrashell
-library, memory management, FFI bindings, and test suites were designed and
-written entirely by human developers.
+- **All library code was written by my own human hand**
+- **Some files were generated using online templates and generators**:
+  - `CONTRIBUTING.md`: [Dev Toolbox](https://www.dev-toolbox.tech/tools/contributing-generator)
+  - `docs/assets/architecture-diagram.svg`: [D2 Lang Playground](https://play.d2lang.com)
+  - `docs/assets/explanatory-diagram.svg`: [D2 Lang Playground](https://play.d2lang.com)
+- **Some documentation files and assets were drafted or completely made with AI**:
+  - `README.md`: drafted with Gemini
+  - `TRADEMARK.md`: made with Gemini
+  - `docs/assets/logo.png`: made with Gemini

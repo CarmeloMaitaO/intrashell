@@ -1,5 +1,7 @@
 ##[ Intrashell
-A lightweight library for dynamically loading and managing nested, concurrent state-machines.
+A lightweight library for using shared libraries as dynamic modules in Nim.
+
+**To use procedures that accept `Path` types, you must import `std/paths`**
 ]##
 when not defined(gcArc) and not defined(gcOrc) and not defined(gcAtomicArc):
   {.error: "intrashell.nim requires to be compiled with --mm:arc, --mm:orc or --mm:atomicArc".}
@@ -16,12 +18,62 @@ import std/paths
 
 type
   IntrashellObj* = object
+    ## Base Intrashell object. DON'T USE IT DIRECTLY
     registry: RcuTableRef[string, Module]
     pointerToItself: string
   IntrashellPtr* = ptr IntrashellObj
+    ##[
+    Pointer to the base Intrashell object. Only use it within modules to
+    communicate with other modules or relay operations (`IntrashellOperation`)
+    to it. Should be populated once loaded into an Intrashell instance. Example:
+
+    ```nim
+    # module.nim -> module.so / module.dll / module.dylib
+    import intrashell
+    var registry: IntrashellPtr
+
+    proc yourProc(input: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
+      if input[0] == INITCOMMAND:
+        registry = castStringToIntrashellPtr(input[1])
+    ```
+    ]##
   Intrashell* = ref IntrashellObj
+    ##[
+      The main Intrashell object. The one you should use within the main binary
+      of your application. Example use:
+
+      ```nim
+      var registry: Intrashell = newIntrashell()
+
+      discard registry.processOperations(
+        newOperation(
+          LOAD,
+          "yourModuleName",
+          Version(major: 1, minor: 0, patch: 0),
+          Path("path/to/your/module")
+        ),
+        newOperation(
+          UPDATE,
+          "yourModuleName",
+          Version(major: 2, minor: 0, patch: 0),
+          Path("path/to/your/module")
+        ),
+        newOperation(
+          ROLLBACK,
+          "yourModuleName",
+          Version(major: 1, minor: 0, patch: 0),
+          Path("path/to/your/module")
+        ),
+      )
+
+      echo registry.shell("yourModuleName", "subcommand", "parameter[1]")
+      ```
+
+      **It needs to be a global variable to work with multiple threads**
+    ]##
 
 proc newIntrashell*(): Intrashell =
+  ## Creates a new Intrashell object.
   new(result)
   result.registry = newRcuTable[string, Module]()
   result.pointerToItself = castPointerToString(cast[IntrashellPtr](result))
@@ -41,6 +93,14 @@ proc shell*(intrashell: IntrashellObj, parameters: varargs[string, `$`]): seq[st
     raise newException(WrongParameters, "You need to specify the arguments")
 
 proc shell*(intrashell: Intrashell, parameters: varargs[string, `$`]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
+  ##[
+  Calls a module within the registry and passes the parameters. Returns the
+  output of said module. Example:
+
+  ```nim
+  echo intrashellObject.shell("someModule", "Param 1", "Param 2")
+  ```
+  ]##
   result = @[]
   var
     command: string
@@ -70,11 +130,25 @@ proc shell*(intrashell: IntrashellPtr, parameters: varargs[string, `$`]): seq[st
 
 type
   IntrashellOperationType* = enum
+    ##[
+    The type of operation to execute.
+
+    - LOAD: loads the given modules
+    - UNLOAD: unloads the module
+    - UPDATE: replaces an existing module if the version of the new one is higher
+    - ROLLBACK: replaces an existing module if the version of the new one is lower
+
+    You can use `UPDATE` and `ROLLBACK` for modules that has no previous version
+    on the registry, just like `LOAD`.
+
+    You can use `LOAD` to replace a module no matter the version differences.
+    ]##
     LOAD,
     UNLOAD,
     UPDATE,
     ROLLBACK
   IntrashellOperation* = ref object
+  ## An operation to execute in the registry
     identity: string
     case kind: IntrashellOperationType
     of UNLOAD:
@@ -89,6 +163,11 @@ proc newOperation*(
   kind: IntrashellOperationType,
   identity: string
 ): IntrashellOperation {.raises: [ValueError].} =
+  ##[
+  Creates a new Intrashell registry operation. Supported ones in this form:
+
+  - `UNLOAD`.
+  ]##
   case kind
   of UNLOAD:
     result = IntrashellOperation(kind: UNLOAD, identity: identity)
@@ -101,6 +180,14 @@ proc newOperation*(
   version: Version,
   path: Path
 ): IntrashellOperation {.raises: [].} =
+  ##[
+  Creates a new Intrashell registry operation. Supported ones in this form:
+
+  - `UNLOAD`
+  - `LOAD`
+  - `UPDATE`
+  - `ROLLBACK`
+  ]##
   case kind
   of UNLOAD:
     result = IntrashellOperation(kind: UNLOAD, identity: identity)
@@ -117,6 +204,14 @@ proc newOperation*(
   version: Version,
   dispatch: ImportedDispatch
 ): IntrashellOperation {.raises: [].} =
+  ##[
+  Creates a new Intrashell registry operation. Supported ones in this form:
+
+  - `UNLOAD`
+  - `LOAD`
+  - `UPDATE`
+  - `ROLLBACK`
+  ]##
   case kind
   of UNLOAD:
     result = IntrashellOperation(kind: UNLOAD, identity: identity)
@@ -147,6 +242,23 @@ proc execute(intrashell: Intrashell, operation: IntrashellOperation, slot: int) 
       intrashell.registry[slot, operation.identity] = loadModule(operation, intrashell.pointerToItself)
 
 proc processOperations*(intrashell: Intrashell, operations: varargs[IntrashellOperation]): seq[string] =
+  ##[
+  Process all the the given Intrashell registry operations and returns
+  a sequence of strings containing any encountered erros. Example:
+
+  ```nim
+  echo intrashellRegistry.processOperations(
+    newOperation(
+      LOAD,
+      "moduleName",
+      Version(major: 1, minor: 0, patch: 0),
+      Path("path/to/module.so")
+    )
+  )
+  ```
+
+  **Operations are only executed when they are passed to this procedure**
+  ]##
   var errors: seq[string]
   intrashell.registry.modify:
     for operation in operations:

@@ -29,13 +29,13 @@ elif defined(testC1): #########################################
       command: string = parameters[0]
       arguments = 1..high(parameters)
     case command
-    of "INIT":
+    of INITCOMMAND:
       try:
         ushell = castStringToIntrashellPtr(parameters[1])
       except Exception:
         discard
       state = 0
-    of "SHUTDOWN":
+    of SHUTDOWNCOMMAND:
       ushell = nil
       state = 0
     of "set":

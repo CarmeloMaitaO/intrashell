@@ -2,6 +2,10 @@ nimcache/
 nimblecache/
 htmldocs/
 *.so
+*.idx
+*.html
+*.css
+*.js
 .gemini
 nimble.develop
 nimble.paths
@@ -20,5 +24,3 @@ tests/testSuiteB_View
 tests/testSuiteC_Buffer
 tests/testSuiteC_RCUTable
 tests/testSuiteD_Module
-/docs
-
