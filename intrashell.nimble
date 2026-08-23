@@ -3,7 +3,7 @@
 version       = "1.0.0"
 author        = "Carmelo Augusto Maita Orlando"
 description   = "A library for dynamically loaded, nested, concurrent state-machines"
-license       = "MIT"
+license       = "Apache License 2.0"
 srcDir        = "src"
 
 # Dependencies
@@ -31,7 +31,7 @@ proc compileSampleModules() =
     for module in modules:
       run(
         cmd,
-        "--out:" & module[0] & ".so",
+        "--out:" & module[0].toDll(),
         "-d:" & module[1],
         "samples.nim"
       )
@@ -41,3 +41,4 @@ before test:
 
 task docgen, "Generate the documentation for this project":
   run "nimble doc --path:./src --project --index:on --outdir:docs ./src/intrashell.nim"
+  mvFile("./docs/intrashell.html", "./docs/index.html")

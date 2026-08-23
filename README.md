@@ -7,7 +7,7 @@ behaviour of CLI applications (which are state-machines).
 
 ## Installation
 
-`nimble install gh:CarmeloMaitaO/Intrashell`
+`nimble install https://github.com/CarmeloMaitaO/Intrashell`
 
 Or add to your `.nimble` file:
 
@@ -21,7 +21,8 @@ Or add to your `.nimble` file:
   - `--mm:orc`
   - `--mm:Atomicarc`
 - Modules in the form of shared libraries must use the flags `-d:useMalloc --app:lib`
-- The main binary and the modules can use different combinations of memory management, one does not constraint the other
+- The main binary and the modules can use different combinations of memory management, one does not constrain the other
+- Only dependency is Nim's standard library
 
 ## Table of Contents
 
@@ -30,10 +31,12 @@ Or add to your `.nimble` file:
 - [Features](#features)
   - [Technical Features](#technical-features)
   - [Architectural & Team Benefits](#architectural--team-benefits)
+- [Goals](#goals)
 - [Module creation](#module-creation)
   - [Stateless Module Example](#stateless-module-example)
   - [Stateful & Host-Calling Module Example](#stateful--host-calling-module-example)
 - [Implementation Details](#implementation-details)
+- [Caveats & Workarounds](#caveats--workarounds)
 - [AI Disclaimer & Attributions](#ai-disclaimer--attributions)
 
 ## What It Does
@@ -111,7 +114,6 @@ discard myIntrashellInstance.processOperations(
 - **Binary-Safe FFI (`Buffer`)**: Transfer binary data, UTF-8 strings, and raw pointers without null-byte (`\0`) truncation across FFI boundaries.
 - **Deterministic Lifecycle Hooks**: Automated `INIT` initialization (passing host pointers) and `SHUTDOWN` cleanup signals on module load/unload.
 - **Shared Library Compatibility**: Runs on any operating system or execution environment that supports shared libraries (`.so`, `.dll`, `.dylib`).
-- **Language Independent (WIP)**: Built on a flat C-compatible `Buffer` memory layout and standard `cdecl` ABI, allowing modules to be authored in any language supporting standard C FFI bindings (such as C, C++, Rust, or Zig).
 
 ### Architectural & Team Benefits
 
@@ -119,9 +121,24 @@ discard myIntrashellInstance.processOperations(
 - **Self-Contained Binary Packaging**: Simplifies deployment down to standalone shared libraries (`.so`, `.dll`), which can statically link internal dependencies for zero-friction, self-contained distribution.
 - **Two-Way IP Confidentiality**: Protects proprietary source code without sharing repository access. Host owners can outsource modules by providing only OS/CPU target specs, while third-party vendors can ship pre-compiled binaries without revealing module source code.
 - **Decoupled Team Workflows**: Isolated module boundaries allow separate teams and contractors to develop, test, and deploy features independently without merge conflicts or tight build-time dependencies, enabling smooth, risk-free updates.
-- **Bug-shipping prevention**: the signature of the module's procedure forces developers to handle any potential error before shipping it to production, as the only accepted errors are custom ones (`WrongParameters` and `CommandFailed`)
+- **Strict FFI Exception Boundary**: Locks the module's entry point to only raise `WrongParameters` and `CommandFailed`. This enforces exception handling at the modules, preventing crashes in the host application.
+- **LLM-friendly Module Boundaries**: Enables safe code delegation to LLMs by isolating module generation to a single, simple procedure signature. The strict FFI exception boundary prevents unhandled errors from breaking the host, while requiring minimal context for prompts.
 - **Lightweight Alternative to Containers & Script Runtimes**: Serves as a native structural alternative to containers and JS/WASM runtimes specifically for module hot-swapping, component isolation, and plugin dispatch—delivering container-like modularity without virtualization daemons or JS engine memory overhead.
 
+## Goals
+
+- Depend at most of Nim's standard library
+- Only support native binaries
+- Be cross-language and maintain bindings to multiple languages (WIP) like:
+  - C
+  - Zig
+  - Rust
+- Be cross-platform
+- Be flexible enough to be used in a wide range of applications, including:
+  - Web servers
+  - Games
+  - CLI/TUI utilities
+  - Web applications (through WASM and with support for only static procedures)
 
 ## Module creation
 
@@ -201,6 +218,15 @@ Intrashell relies on two main components to achieve thread safety and low FFI ov
 
 The entire codebase is less than 1500 LOC and it contains comments explaining
 the inner workings of each file, so go ahead and give it a read.
+
+## Caveats & Workarounds
+
+| Caveat | Workaround |
+| ------ | ---------- |
+| Lack of support for custom procedure signatures / use of a single procedure signature | The single procedure signature is necessary to  make exporting and importing modules automatic, but one can pass pointers to custom procedures through the `shell()` procedure (using the `castPointerToString()` and `castStringToPointer()` helpers) |
+| Input sanitization is required at the host and every module logic | Define simple positional based APIs to simplify input handling |
+| The `shell()` procedure doesn't support asynchronous/parallel tasks | Implement 2 task types: one for batching tasks and another for fetching their status |
+| The `Buffer` copies memory to pass inputs/outputs, it's wasteful | This is intended to change in V2.0.0, but for now try to limit the size of the data that is passed through the `shell()` procedure |
 
 ## AI Disclaimer & attributions
 

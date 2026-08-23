@@ -152,5 +152,6 @@ proc contains*(view: BufferView, item: string): bool {.raises: []} =
 
 proc toSeq*(view: BufferView): seq[string] {.raises: [].} =
   result = @[]
-  for i in view:
-    result.add($i)
+  if view.len != 0:
+    for i in view:
+      result.add($i)

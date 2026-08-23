@@ -1,8 +1,15 @@
 import intrashell/module
 import std/paths
 
+when hostOS == "windows":
+  var ext: string = ".dll"
+elif hostOS == "macosx":
+  var ext: string = ".dylib"
+else:
+  var ext: string = ".so"
+
 var
-  file: Path = getCurrentDir() / Path("tests") / Path("sampleA.so")
+  file: Path = getCurrentDir() / Path("tests") / Path("sampleA" & ext)
 
 proc someProc(input: seq[string]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
   return input

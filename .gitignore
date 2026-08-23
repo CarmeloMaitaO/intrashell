@@ -12,15 +12,9 @@ nimble.paths
 nimbledeps
 config.nims
 .antigravitycli
-tests/testUnishellStatic
-tests/testUnishellDynamic
-tests/testAuxiliaryProcedures
-tests/moduleStateful1
-tests/moduleStateful2
-tests/moduleStateless1
-tests/moduleStateless2
 tests/testSuiteA_Allocator
 tests/testSuiteB_View
 tests/testSuiteC_Buffer
 tests/testSuiteC_RCUTable
 tests/testSuiteD_Module
+tests/testSuiteE_Intrashell

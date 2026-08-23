@@ -1,14 +1,21 @@
 import intrashell
 import std/paths
 
+when hostOS == "windows":
+  var ext: string = ".dll"
+elif hostOS == "macosx":
+  var ext: string = ".dylib"
+else:
+  var ext: string = ".so"
+
 var
   aux: Intrashell = newIntrashell()
   dir: Path = getCurrentDir() / Path("tests")
-  sampleA: Path = dir / Path("sampleA.so")
-  sampleB1: Path = dir / Path("sampleB1.so")
-  sampleB2: Path = dir / Path("sampleB2.so")
-  sampleC1: Path = dir / Path("sampleC1.so")
-  sampleC2: Path = dir / Path("sampleC2.so")
+  sampleA: Path = dir / Path("sampleA" & ext)
+  sampleB1: Path = dir / Path("sampleB1" & ext)
+  sampleB2: Path = dir / Path("sampleB2" & ext)
+  sampleC1: Path = dir / Path("sampleC1" & ext)
+  sampleC2: Path = dir / Path("sampleC2" & ext)
   v0: Version = Version(major: 0, minor: 0, patch: 0)
   v1: Version = Version(major: 1, minor: 0, patch: 0)
   v2: Version = Version(major: 2, minor: 0, patch: 0)
@@ -58,5 +65,5 @@ discard aux.processOperations(
 assert aux.shell("cmd2", "call", "cmd1", "hello") == @["hello"]
 assert aux.shell("cmd1", "hello") == @["hello"]
 assert aux.shell("cmd2", "get") == @["0"]
-assert aux.shell("cmd2", "set", "5") == @[""]
+assert aux.shell("cmd2", "set", "5") == @[]
 assert aux.shell("cmd2", "get") == @["5"]

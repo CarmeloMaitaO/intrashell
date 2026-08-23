@@ -10,6 +10,7 @@ var
   auxSeqStr7: seq[string] = @[""]
   auxSeqStr8: seq[string] = @["", ""]
   auxSeqStr9: seq[string] = @["", "", ""]
+  auxSeqStr10: seq[string] = @[]
 
 var auxBuffer: Buffer
 
@@ -34,5 +35,6 @@ assert testConversion(auxSeqStr6)
 assert testConversion(auxSeqStr7)
 assert testConversion(auxSeqStr8)
 assert testConversion(auxSeqStr9)
+assert testConversion(auxSeqStr10)
 auxBuffer.dallocDarray(0)
 assert auxBuffer.isNil()

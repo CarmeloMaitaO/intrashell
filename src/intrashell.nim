@@ -8,12 +8,9 @@ when not defined(gcArc) and not defined(gcOrc) and not defined(gcAtomicArc):
 
 import intrashell/[
   rcutable,
-  module,
-  buffer
-]
-export
-  buffer,
   module
+]
+export module
 import std/paths
 
 type
@@ -148,7 +145,7 @@ type
     UPDATE,
     ROLLBACK
   IntrashellOperation* = ref object
-  ## An operation to execute in the registry
+    ## An operation to execute in the registry
     identity: string
     case kind: IntrashellOperationType
     of UNLOAD:
