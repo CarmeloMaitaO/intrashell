@@ -7,11 +7,11 @@ behaviour of CLI applications (which are state-machines).
 
 ## Installation
 
-`nimble install https://github.com/CarmeloMaitaO/Intrashell`
+`nimble install intrashell`
 
 Or add to your `.nimble` file:
 
-`requires https://github.com/CarmeloMaitaO/intrashell`
+`requires intrashell`
 
 ### Notes
 
