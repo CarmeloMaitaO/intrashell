@@ -137,6 +137,7 @@ discard myIntrashellInstance.processOperations(
 - Be flexible enough to be used in a wide range of applications, including:
   - Web servers
   - Games
+  - Desktop applications
   - CLI/TUI utilities
   - Web applications (through WASM and with support for only static procedures)
 
@@ -213,8 +214,10 @@ dispatchBoilerplate(entryPoint)
 
 Intrashell relies on two main components to achieve thread safety and low FFI overhead:
 
+- **Flat Buffer (`Buffer`)**: A flat, contiguous memory structure used to pack multiple strings into a single chunk of memory for FFI. It avoids standard C strings (`cstring`) to prevent truncation on null bytes (`\0`), making it safe for binary payloads, pointers, and UTF-8 data across language boundaries.
+- **Module (`Module`)**: An object that loads and encapsulates a shared library or static procedure, and provides life-tracking hooks, along with the `shell()` interface and `dispatchBoilerplate()` template.
 - **RCU Table (`RcuTableRef`)**: A lockless-reader hash table. Readers acquire a reference to the active table with zero locking overhead, relying on Nim's ARC/ORC/AtomicARC reference counting to prevent premature deallocation. Writers acquire a single lock, copy the inactive table, swap the atomic index (`activeSlot`), and allow old references to be freed when readers finish.
-- **Flat Buffer (`Buffer` / `Darray[char]`)**: A flat, contiguous memory structure used to pack multiple strings into a single chunk of memory for FFI. It avoids standard C strings (`cstring`) to prevent truncation on null bytes (`\0`), making it safe for binary payloads, pointers, and UTF-8 data across language boundaries.
+- **Intrashell (`Intrashell`)**: An object that uses the `RcuTableRef` to manage `Module` types. It provides the mecanism for batching operations on the table.
 
 The entire codebase is less than 1500 LOC and it contains comments explaining
 the inner workings of each file, so go ahead and give it a read.
@@ -225,7 +228,7 @@ the inner workings of each file, so go ahead and give it a read.
 | ------ | ---------- |
 | Lack of support for custom procedure signatures / use of a single procedure signature | The single procedure signature is necessary to  make exporting and importing modules automatic, but one can pass pointers to custom procedures through the `shell()` procedure (using the `castPointerToString()` and `castStringToPointer()` helpers) |
 | Input sanitization is required at the host and every module logic | Define simple positional based APIs to simplify input handling |
-| The `shell()` procedure doesn't support asynchronous/parallel tasks | Implement 2 task types: one for batching tasks and another for fetching their status |
+| The `shell()` procedure doesn't have asynchronous/parallel variants | You can either wrap it in an asynchronous/parallel procedure or implement 2 task/command types: one for batching tasks in the background and another for fetching their status |
 | The `Buffer` copies memory to pass inputs/outputs, it's wasteful | This is intended to change in V2.0.0, but for now try to limit the size of the data that is passed through the `shell()` procedure |
 
 ## AI Disclaimer & attributions
