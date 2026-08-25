@@ -129,17 +129,15 @@ discard myIntrashellInstance.processOperations(
 
 - Depend at most of Nim's standard library
 - Only support native binaries
-- Be cross-language and maintain bindings to multiple languages (WIP) like:
+- (WIP) Be cross-language and maintain bindings to multiple languages like:
   - C
   - Zig
   - Rust
 - Be cross-platform
 - Be flexible enough to be used in a wide range of applications, including:
-  - Web servers
-  - Games
-  - Desktop applications
+  - Servers
+  - Desktop/Mobile applications
   - CLI/TUI utilities
-  - Web applications (through WASM and with support for only static procedures)
 
 ## Module creation
 
