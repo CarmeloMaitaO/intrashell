@@ -16,3 +16,4 @@ release of Intrashell.
 - Adding additional versions of the `shell()` interface:
   - An asynchronous version
   - (For modules only) a version that automatically calls the Intrashell pointer
+- Add aliases for the registry, so a module can have many identities
