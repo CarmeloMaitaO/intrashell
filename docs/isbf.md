@@ -52,12 +52,12 @@
 
 #### Structure Tags
 
-| Tag ID |     Name    | PS8: ID | PS8: # of tags inside     |  TS8  |
-| ------ | ----------- | ------- | ------------------------- | ----- |
-| `0x00` | Struct1     | 1       | 8                         | > 10  |
-| `0x01` | Struct2     | 2       | 8                         | > 11  |
+| Tag ID |     Name    | PS8: ID | PS8: # of tags inside     |  TS8   |
+| ------ | ----------- | ------- | ------------------------- | ------ |
+| `0x00` | Struct1     | 1       | 2                         | >= 4   |
+| `0x01` | Struct2     | 2       | 2                         | >= 5   |
 
-> The tag ID of structures is included in the data / schema implementation
+> The tag ID of the structure is included in the data / schema implementation
 
 #### Primitive Tags: Numeric
 
@@ -88,11 +88,11 @@
 
 #### Container Tags: Set Contained Tag
 
-| Tag ID |                Name             | PS8: # of bytes |
-| ------ | ------------------------------- | --------------- |
-| `0x0F` | Bitset                          | 1               |
-| `0x10` | String (UTF-8)                  | 8               |
-| `0x20` | BLOB                            | 8               |
+| Tag ID |                Name             | PS8: # of bytes |       TS8       |
+| ------ | ------------------------------- | --------------- | --------------- |
+| `0x0F` | Bitset                          | 1               | 2 + \[0..255\]  |
+| `0x10` | String (UTF-8)                  | 2               | 3 + \[0..2^16-1\] |
+| `0x11` | BLOB                            | 4               | 9 + \[0..2^64-1\] |
 
 > If the number of bytes value is 0 in the schema, then the container has a
 > dynamic size in the implementation; otherwise, it has a fixed size
@@ -101,7 +101,7 @@
 
 | Tag ID |                Name             | PS8: # of elements | PS8: tag |
 | ------ | ------------------------------- | ------------------ | -------- |
-| `0x30` | Array                           | 8                  | 1        |
+| `0x12` | Array                           | 8                  | 1        |
 
 > If the number of elements value is 0 in the schema, then the container has a
 > dynamic size in the implementation; otherwise, it has a fixed size
@@ -110,7 +110,7 @@
 
 | Tag ID |                Name             | PS8: # of elements |
 | ------ | ------------------------------- | ------------------ |
-| `0x40` | Associative Array               | 8                  |
+| `0x13` | Associative Array               | 8                  |
 
 #### Special / Metadata Tags
 
