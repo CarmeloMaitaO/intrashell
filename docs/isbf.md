@@ -5,14 +5,14 @@
 * **Endianness:** little-endian
 * **File extension:** `isbf` / `ISBF`
 * **MIME type:** `application/vnd.intrashell.isbf`
-* **Magic bytes:** `0x46` `0x42` `0x53` `0x49` ("FBIS" or `1_230_193_222u32`)
-* **Schema:** pre-shared or embeddded schema
+* **Magic bytes:** `0x46` `0x42` `0x53` `0x49` ("FBIS")
+* **Schema:** pre-shared or embedded schema
 * **Elements size in bits:** all elements use full octects with no splitting
 
 ## File Structure
 
 | Order |               content            |
-| ----  | -------------------------------- |
+| ----- | -------------------------------- |
 | 0     | Header                           |
 | 1     | Schema (pre-shared or embedded)  |
 | 2     | Data                             |
@@ -88,29 +88,29 @@
 
 #### Container Tags: Set Contained Tag
 
-| Tag ID |                Name             | PS8: # of bytes |       TS8       |
-| ------ | ------------------------------- | --------------- | --------------- |
-| `0x0F` | Bitset                          | 1               | 2 + \[0..255\]  |
+| Tag ID |                Name             | PS8: # of bytes |       TS8         |
+| ------ | ------------------------------- | --------------- | ----------------- |
+| `0x0F` | Bitset                          | 1               | 2 + \[0..255\]    |
 | `0x10` | String (UTF-8)                  | 2               | 3 + \[0..2^16-1\] |
-| `0x11` | BLOB                            | 4               | 9 + \[0..2^64-1\] |
+| `0x11` | BLOB                            | 8               | 9 + \[0..2^64-1\] |
 
 > If the number of bytes value is 0 in the schema, then the container has a
 > dynamic size in the implementation; otherwise, it has a fixed size
 
 #### Container Tags: Single Contained Tag
 
-| Tag ID |                Name             | PS8: # of elements | PS8: tag |
-| ------ | ------------------------------- | ------------------ | -------- |
-| `0x12` | Array                           | 8                  | 1        |
+| Tag ID | Name  | PS8: # of elements | PS8: tag | PS8: tag payload   |                TS8                 |
+| ------ | ----- | ------------------ | -------- | ------------------ | ---------------------------------- |
+| `0x12` | Array | 8                  | 1        | Depends on the tag | 10 + (tag payload * # of elements) |
 
 > If the number of elements value is 0 in the schema, then the container has a
 > dynamic size in the implementation; otherwise, it has a fixed size
 
 #### Container Tags: Contained Pair of Tags
 
-| Tag ID |                Name             | PS8: # of elements |
-| ------ | ------------------------------- | ------------------ |
-| `0x13` | Associative Array               | 8                  |
+| Tag ID |                Name             | PS8: # of elements | PS8: tag + payload 1 | PS8: tag + payload 2 |                                         TS8                              |
+| ------ | ------------------------------- | ------------------ | -------------------- | -------------------- | ------------------------------------------------------------------------ |
+| `0x13` | Associative Array               | 8                  | 1 + tag dependent    | 1 + tag dependent    | 11 + (tag dependent payload 1 + tag dependent payload 2) * # of elements |
 
 #### Special / Metadata Tags
 

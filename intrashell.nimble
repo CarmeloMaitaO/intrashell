@@ -1,6 +1,6 @@
 # Package
 
-version       = "1.0.0"
+version       = "1.0.1"
 author        = "Carmelo Augusto Maita Orlando"
 description   = "A library for dynamically loaded, nested, concurrent state-machines"
 license       = "Apache License 2.0"
@@ -18,6 +18,12 @@ proc run(args: varargs[string, `$`]) =
   exec(processedArgs)
 
 proc compileSampleModules() =
+  when hostOS == "windows":
+    var ext: string = ".dll"
+  elif hostOS == "macosx":
+    var ext: string = ".dylib"
+  else:
+    var ext: string = ".so"
   var
     modules: seq[seq[string]] = @[
       @["sampleA", "testA"],
@@ -31,7 +37,7 @@ proc compileSampleModules() =
     for module in modules:
       run(
         cmd,
-        "--out:" & module[0].toDll(),
+        "--out:" & module[0] & ext,
         "-d:" & module[1],
         "samples.nim"
       )

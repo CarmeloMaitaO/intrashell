@@ -197,6 +197,8 @@ proc shell*(module: Module, parameters: varargs[string, `$`]): seq[string] {.rai
     if (not wrongParameterFlag) and (not commandFailedFlag):
       outputView = output.newBufferView()
       outputSeq = outputView.toSeq()
+      input.dallocDarray(0)
+      output.dallocDarray(0)
     else:
       input.dallocDarray(0)
       output.dallocDarray(0)
