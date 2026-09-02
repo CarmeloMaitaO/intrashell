@@ -25,7 +25,7 @@
           runsOn = "ubuntu-latest";
           steps = [
             {uses = "actions/checkout@v4";}
-            {uses = "DeterminateSystems/determinate-nix-action@v3";}
+            {uses = "cachix/install-nix-action@v31";}
             {
               name = "Generate documentation";
               id = "build";
