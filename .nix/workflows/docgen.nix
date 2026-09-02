@@ -1,5 +1,14 @@
 {self, inputs, ...}: {
-  perSystem = {pkgs, config, ...}: {
+  perSystem = {self', pkgs, config, ...}: {
+    packages.docgen = pkgs.writeShellScriptBin "docgen" ''
+      PATH+=$PATH:${pkgs.nimble}/bin/
+      PATH+=$PATH:${pkgs.nim}/bin/
+      nimble docgen
+    '';
+    apps.docgen = {
+      type = "app";
+      program = "${self'.packages.docgen}/bin/docgen";
+    };
     githubActions.workflows.docgen = {
       name = "Docgen";
       on = {
@@ -18,13 +27,9 @@
             {uses = "actions/checkout@v4";}
             {uses = "DeterminateSystems/determinate-nix-action@v3";}
             {
-              name = "Launch devshell";
-              run = "nix develop";
-            }
-            {
               name = "Generate documentation";
               id = "build";
-              run = "nimble docgen";
+              run = "nix run .#docgen";
             }
             {
               name = "Upload documentation";
