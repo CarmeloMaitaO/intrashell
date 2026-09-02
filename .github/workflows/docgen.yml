@@ -7,11 +7,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/determinate-nix-action@v3
-      - name: Launch devshell
-        run: nix develop
       - id: build
         name: Generate documentation
-        run: nimble docgen
+        run: nix run .#docgen
       - id: deployment
         name: Upload documentation
         uses: actions/upload-pages-artifact@v3
