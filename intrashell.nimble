@@ -1,8 +1,11 @@
-# Package
-
-version       = "1.0.1"
+import std/strutils
+#[
+  The version file is kept separate to allow Github workflows to track it and
+  automatically tag commits once it is updated.
+]#
+version       = strip(staticRead("version"))
 author        = "Carmelo Augusto Maita Orlando"
-description   = "A library for dynamically loaded, nested, concurrent state-machines"
+description   = "A lightweight library for using shared libraries as dynamic modules"
 license       = "Apache License 2.0"
 srcDir        = "src"
 
