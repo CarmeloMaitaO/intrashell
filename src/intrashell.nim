@@ -75,21 +75,10 @@ proc newIntrashell*(): Intrashell =
   result.registry = newRcuTable[string, Module]()
   result.pointerToItself = castPointerToString(cast[IntrashellPtr](result))
 
-proc shell*(intrashell: IntrashellObj, parameters: varargs[string, `$`]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
-  result = @[]
-  var
-    command: string
-    arguments = 1..parameters.high()
-  try:
-    command = parameters[0]
-  except KeyError:
-    raise newException(WrongParameters, "You need to specify a command")
-  try:
-    result = intrashell.registry[command].shell(parameters[arguments])
-  except KeyError:
-    raise newException(WrongParameters, "You need to specify the arguments")
-
-proc shell*(intrashell: Intrashell, parameters: varargs[string, `$`]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
+proc shell*[T: Intrashell | IntrashellObj | IntrashellPtr](
+  intrashell: T,
+  parameters: varargs[string, `$`]
+): seq[string] =
   ##[
   Calls a module within the registry and passes the parameters. Returns the
   output of said module. Example:
@@ -98,20 +87,6 @@ proc shell*(intrashell: Intrashell, parameters: varargs[string, `$`]): seq[strin
   echo intrashellObject.shell("someModule", "Param 1", "Param 2")
   ```
   ]##
-  result = @[]
-  var
-    command: string
-    arguments = 1..parameters.high()
-  try:
-    command = parameters[0]
-  except KeyError:
-    raise newException(WrongParameters, "You need to specify a command")
-  try:
-    result = intrashell.registry[command].shell(parameters[arguments])
-  except KeyError:
-    raise newException(WrongParameters, "You need to specify the arguments")
-
-proc shell*(intrashell: IntrashellPtr, parameters: varargs[string, `$`]): seq[string] {.raises: [WrongParameters, CommandFailed].} =
   result = @[]
   var
     command: string

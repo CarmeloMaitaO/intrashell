@@ -24,7 +24,7 @@
           name = "Build the documentation";
           runsOn = "ubuntu-latest";
           steps = [
-            {uses = "actions/checkout@v4";}
+            {uses = "actions/checkout@v7";}
             {uses = "cachix/install-nix-action@v31";}
             {
               name = "Generate documentation";
