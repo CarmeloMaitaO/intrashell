@@ -8,7 +8,7 @@
       git checkout main
       git merge development
       git tag $version
-      git push --tags
+      git push -f --tags
     '';
     apps.tag = {
       type = "app";
@@ -33,7 +33,7 @@
             {
               uses = "actions/checkout@v4";
               with_ = {
-                fetch-depth: "0";
+                fetch-depth = "0";
               };
             }
             {uses = "cachix/install-nix-action@v31";}
