@@ -1,19 +1,5 @@
 {self, inputs, ...}: {
   perSystem = {self', pkgs, config, ...}: {
-    packages.tag = pkgs.writeShellScriptBin "tag" ''
-      PATH+=$PATH:${pkgs.git}/bin/
-      version=$(<version)
-      git config user.name "Git Bot"
-      git config user.email "carmeloaugustomaitaorlando@gmail.com"
-      git checkout main
-      git merge development
-      git tag $version
-      git push -f --tags
-    '';
-    apps.tag = {
-      type = "app";
-      program = "${self'.packages.tag}/bin/tag";
-    };
     githubActions.workflows.tag = {
       name = "Tag";
       on = {
@@ -30,16 +16,29 @@
           runsOn = "ubuntu-latest";
           steps = [
             {
-              uses = "actions/checkout@v4";
+              uses = "actions/checkout@v7";
               with_ = {
                 fetch-depth = "0";
               };
             }
-            {uses = "cachix/install-nix-action@v31";}
             {
-              name = "Generate documentation";
-              id = "build";
-              run = "nix run .#tag";
+              name = "Run the Tag script";
+              id = "run";
+              with_ = {
+                GH_TOKEN = "\${{ secrets.GITHUB_TOKEN }}"
+              };
+              run = ''
+                version=$(<version)
+                git config user.name "Git Bot"
+                git config user.email "carmeloaugustomaitaorlando@gmail.com"
+                git checkout main
+                git pull
+                git fetch --all
+                git merge development
+                git push
+                git tag $version
+                git push --tags
+              '';
             }
           ]; # steps
         }; # tag
