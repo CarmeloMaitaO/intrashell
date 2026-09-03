@@ -5,13 +5,24 @@ jobs:
     name: Run all tags
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: "0"
-      - uses: cachix/install-nix-action@v31
-      - id: build
-        name: Generate documentation
-        run: nix run .#tag
+      - id: run
+        name: Run the Tag script
+        run: |
+          version=$(<version)
+          git config user.name "Git Bot"
+          git config user.email "carmeloaugustomaitaorlando@gmail.com"
+          git checkout main
+          git pull
+          git fetch --all
+          git merge development
+          git push
+          git tag $version
+          git push --tags
+        with:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 name: Tag
 "on":
   push:

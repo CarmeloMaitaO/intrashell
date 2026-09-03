@@ -25,7 +25,7 @@
               name = "Run the Tag script";
               id = "run";
               with_ = {
-                GH_TOKEN = "\${{ secrets.GITHUB_TOKEN }}"
+                GH_TOKEN = "\${{ secrets.GITHUB_TOKEN }}";
               };
               run = ''
                 version=$(<version)
