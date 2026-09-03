@@ -15,7 +15,7 @@
       program = "${self'.packages.tag}/bin/tag";
     };
     githubActions.workflows.tag = {
-      name = "tag";
+      name = "Tag";
       on = {
         workflowRun.workflows = ["Test"];
         push.branches = ["development"];

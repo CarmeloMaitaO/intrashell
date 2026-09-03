@@ -175,38 +175,36 @@ proc shell*(module: Module, parameters: varargs[string, `$`]): seq[string] {.rai
     echo someModule.shell("Some", "strings")
     ```
   ]##
+  result = @[]
   var
     input: Buffer
     output: Buffer
     outputView: BufferView
-    outputSeq: seq[string]
-    wrongParameterFlag: bool = false
-    wrongParameterMsg: string
-    commandFailedFlag: bool = false
-    commandFailedMsg: string
+    error: int # 0 = none; 1 = WrongParameters; 2 = CommandFailed
+    errormsg: string
   try:
     input.newBuffer(@parameters)
     module.shell(input, output, hostAllocator)
   except WrongParameters as e:
-    wrongParameterFlag = true
-    wrongParameterMsg = e.msg
+    error = 1
+    errormsg = e.msg
   except CommandFailed as e:
-    commandFailedFlag = true
-    commandFailedMsg = e.msg
+    error = 2
+    errormsg = e.msg
   finally:
-    if (not wrongParameterFlag) and (not commandFailedFlag):
+    if error == 0:
       outputView = output.newBufferView()
-      outputSeq = outputView.toSeq()
+      result = outputView.toSeq()
       input.dallocDarray(0)
       output.dallocDarray(0)
+    elif error == 1:
+      input.dallocDarray(0)
+      output.dallocDarray(0)
+      raise newException(WrongParameters, errormsg)
     else:
       input.dallocDarray(0)
       output.dallocDarray(0)
-      if wrongParameterFlag:
-        raise newException(WrongParameters, wrongParameterMsg)
-      if commandFailedFlag:
-        raise newException(CommandFailed, commandFailedMsg)
-  return outputSeq
+      raise newException(CommandFailed, errormsg)
 
 proc loadModule*(identity: string, version: Version, dispatch: ImportedDispatch, extraArg: string = ""): Module {.raises: [].} =
   var aux: Module

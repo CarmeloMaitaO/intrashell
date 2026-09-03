@@ -12,7 +12,7 @@ jobs:
       - id: build
         name: Generate documentation
         run: nix run .#tag
-name: tag
+name: Tag
 "on":
   push:
     branches:
