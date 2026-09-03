@@ -24,4 +24,3 @@ name: tag
       - Test
 permissions:
   contents: write
-  id-token: read
