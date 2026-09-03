@@ -22,7 +22,6 @@
         push.paths = ["version"];
       }; # on
       permissions = {
-        id-token = "read";
         contents = "write";
       }; # permissions
       jobs = {
