@@ -10,7 +10,6 @@ htmldocs/
 nimble.develop
 nimble.paths
 nimbledeps
-config.nims
 .antigravitycli
 tests/testSuiteA_Allocator
 tests/testSuiteB_View
@@ -18,3 +17,4 @@ tests/testSuiteC_Buffer
 tests/testSuiteC_RCUTable
 tests/testSuiteD_Module
 tests/testSuiteE_Intrashell
+version

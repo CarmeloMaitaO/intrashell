@@ -2,16 +2,21 @@
 
 jobs:
   test:
-    name: Run all tests
+    name: Execute all tests
+    outputs:
+      modified: ${{ steps.modified.outputs.modified }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
-      - id: build
-        name: Generate documentation
+      - name: Run tests
         run: nix run .#test
 name: Test
 "on":
   push:
     branches:
-      - development
+      - dev
+    paths:
+      - intrashell.nimble
+permissions:
+  contents: write

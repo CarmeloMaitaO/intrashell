@@ -1,9 +1,4 @@
-import std/strutils
-#[
-  The version file is kept separate to allow Github workflows to track it and
-  automatically tag commits once it is updated.
-]#
-version       = strip(staticRead("version"))
+version       = "1.0.4"
 author        = "Carmelo Augusto Maita Orlando"
 description   = "A lightweight library for using shared libraries as dynamic modules"
 license       = "Apache License 2.0"
@@ -51,3 +46,6 @@ before test:
 task docgen, "Generate the documentation for this project":
   run "nimble doc --path:./src --project --index:on --outdir:docs ./src/intrashell.nim"
   mvFile("./docs/intrashell.html", "./docs/index.html")
+
+task tag, "Outputs the current version of the package inside a file called `version`":
+  writeFile("version", version)
