@@ -1,4 +1,4 @@
-version       = "1.0.4"
+version       = "1.0.2"
 author        = "Carmelo Augusto Maita Orlando"
 description   = "A lightweight library for using shared libraries as dynamic modules"
 license       = "Apache License 2.0"
