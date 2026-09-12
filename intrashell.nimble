@@ -8,6 +8,8 @@ srcDir        = "src"
 
 requires "nim >= 2.0.0"
 
+# Helpers
+
 proc run(args: varargs[string, `$`]) =
   var
     processedArgs: string = args[0]
