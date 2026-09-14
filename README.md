@@ -20,7 +20,7 @@ Or add to your `.nimble` file:
   - `--mm:arc`
   - `--mm:orc`
   - `--mm:Atomicarc`
-- Modules in the form of shared libraries must use the flags `-d:useMalloc --app:lib`
+- Modules in the form of shared libraries must compile with the flags `-d:useMalloc --app:lib`
 - The main binary and the modules can use different combinations of memory management, one does not constrain the other
 - Only dependency is Nim's standard library
 

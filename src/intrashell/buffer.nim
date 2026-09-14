@@ -51,56 +51,104 @@
 # EXTERNAL ALLOCATOR
 # =============================================================================
 #[
- This is the allocator procedure; it's function is to make the host's allocator
+ This is the allocator procedure; its function is to make the host's allocator
  available to modules, so the memory used by the module is allocated and freed
  in the host.
- 
- Currently, it is implemented as a case statement in order to make it easier
- to export to other languages. It might be turned into a VTable with pointers
- to the respective memory management procedures later on.
 ]#
 
 type
-  HostAllocatorAction* = enum
+  AllocatorAction* = enum
     ALLOC = 0,
     DEALLOC = 1,
-    DEALLOCTOALLOC = 2,
-    ZEROMEM = 3,
-    RESIZE = 4
-  HostAllocator* = proc(address: pointer = nil, newsize: Natural = 0, action: HostAllocatorAction): pointer {.cdecl, raises: [].}
+    REALLOC = 2,
+    ZEROMEM = 3
+  allocator* = proc(
+    address: pointer = nil,
+    action: AllocatorAction,
+    newsize: Natural
+  ): pointer {.cdecl, raises: [].}
 
-proc hostAllocator*(address: pointer = nil, action: HostAllocatorAction, newsize: Natural = 0,): pointer {.cdecl, raises: [].} =
+proc allocator*(
+  address: pointer = nil,
+  action: AllocatorAction,
+  newsize: Natural
+): pointer {.cdecl, raises: [].} =
   result = address
   case action
   of ALLOC:
-    if newsize > 0:
-      return alloc0(newsize)
+    if address == nil:
+      if newsize > 0:
+        result = alloc(newsize)
     else:
-      return nil
+      dealloc(address)
+      result = alloc(newsize)
   of DEALLOC:
     if address != nil:
       dealloc(address)
-    return nil
-  of DEALLOCTOALLOC:
-    if address != nil:
-      dealloc(address)
-    if newsize > 0:
-      return alloc0(newsize)
-    else:
-      return nil
-  of ZEROMEM:
-    if (address != nil) and (newsize != 0):
-      zeroMem(address, newsize)
-    return address
-  of RESIZE:
+      result = nil
+  of REALLOC:
     if (address != nil):
-      if newsize != 0:
-        discard
+      if newsize > 0:
+        realloc(address, newsize)
       else:
         dealloc(address)
         result = nil
+    else:
+      result = alloc(newsize)
+  of ZEROMEM:
+    if (address != nil) and (newsize != 0):
+      zeroMem(address, newsize)
+    result = address
 
+# =============================================================================
+# HELPERS
+# =============================================================================
 
+##[
+  This is the helper module for allocating memory using the Allocator module
+  creating views to it. Given that the Buffer type only supports numbers and
+  characters, this module was made to only be able to manage those types.
+]##
+
+template getNumbers(data: varargs[string, `$`]): seq[int] =
+  #[
+    Each number represents:
+    0. Total number of elements within the structure
+    1. Sum of the sizes in bytes of each element within the structure
+    [2, n]. Total size in bytes of each element 
+  ]#
+  result = @[0, 0]
+  for index, element in data:
+    result[0] += 1
+    result[1] += element.len()
+    result.add(element.len())
+
+template allocateFor(ma: allocator, data: seq[int]): pointer =
+  if data[0] == 0:
+    result = nil
+  else:
+    result = result.ma(
+      ALLOC,
+      (
+        (sizeOf(int)*2) + # Number of elements & offset to offset list
+        data[1] + # Total size of a packed array with all the elements
+        (sizeOf(int)*data[0]) # An offset for every element
+      )
+    )
+
+template copyData(
+  address: pointer,
+  data: varargs[string, `$`],
+  metadata: seq[int]
+) =
+  var aux: ptr UncheckedArray[int]
+  if address != nil:
+    aux = cast[ptr UncheckedArray[int]](address)
+    aux[0] = metadata[0]
+    aux[1] = metadata[1] + sizeOf(int)*2
+    aux = cast[ptr UncheckedArray[int]](address + aux[1])
+    for index in 2..metadata.high():
+      aux[index-2] = metadata[index] # check and fix. This holds bytesize of elements, not offsets
 # =============================================================================
 # BUFFER OBJECT
 # =============================================================================
@@ -109,7 +157,7 @@ import intrashell/view
 export allocator, view
 
 type
-  Buffer* = Darray[char]
+  Buffer* = pointer
     ##[
       Simulates a `seq[string]` in a flat structure. It is structured in the following way:
 
@@ -121,15 +169,6 @@ type
       - Offsets: indexes that mark the end of each string.
       - Data: The contained strings.
     ]##
-  BufferView* = object
-    ##[
-      A unified view for all the strings contained within the Buffer. It uses
-      a sequence of character views to point to the actual strings.
-    ]##
-    len: Natural
-    offsets: View[Natural]
-    cap: Natural
-    strings: seq[View[char]]
 
 proc newBuffer*(buffer: var Buffer, strings: seq[string], allocator: HostAllocator = hostAllocator) {.raises: [].} =
   var
@@ -160,52 +199,3 @@ proc newBuffer*(buffer: var Buffer, strings: seq[string], allocator: HostAllocat
       auxView2 = buffer.newView(auxView1[i], auxView1[i+1] - auxView1[i])
       auxView2.overwriteWith(strings[i], allocator)
 
-proc newBufferView*(buffer: Buffer): BufferView {.raises: [].} =
-  if not (buffer.isNil()):
-    result.offsets = buffer.newAlternateView(1)
-    result.len = result.offsets[0]
-    if result.len > 0:
-      result.offsets = buffer.newAlternateView(sizeOf(int), result.len)
-      result.cap = result.offsets[result.len-1]-1
-  for i in 0 ..< result.offsets.len():
-    result.strings.add(
-      buffer.newView(
-        result.offsets[i],
-        result.offsets[i+1] - result.offsets[i]
-      )
-    )
-
-proc `[]`*(view: BufferView, index: Natural): View[char] {.raises: [].} =
-  return view.strings[index]
-
-iterator items*(view: BufferView): View[char] {.raises: [].} =
-  for i in view.strings:
-    yield i
-
-proc find*(view: BufferView, item: View[char]): int {.raises: [].} =
-  result = 0
-  for i in view:
-    if i == item:
-      return result
-    inc(result)
-  return -1
-
-proc find*(view: BufferView, item: string): int {.raises: [].} =
-  result = 0
-  for i in view:
-    if $i == item:
-      return result
-    inc(result)
-  return -1
-
-proc contains*(view: BufferView, item: View[char]): bool {.raises: []} =
-  find(view, item) >= 0
-
-proc contains*(view: BufferView, item: string): bool {.raises: []} =
-  find(view, item) >= 0
-
-proc toSeq*(view: BufferView): seq[string] {.raises: [].} =
-  result = @[]
-  if view.len != 0:
-    for i in view:
-      result.add($i)
