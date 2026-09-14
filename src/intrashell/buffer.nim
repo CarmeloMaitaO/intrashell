@@ -110,7 +110,19 @@ proc allocator*(
   characters, this module was made to only be able to manage those types.
 ]##
 
-template getNumbers(data: varargs[string, `$`]): seq[int] =
+proc calcAddress(address: pointer, offset: int = 0): pointer {.inline.} =
+  result = cast[pointer](cast[uint](address) + cast[uint](offset))
+
+proc calcAddress(address: pointer, offset: uint = 0): pointer {.inline.} =
+  result = cast[pointer](cast[uint](address) + offset)
+
+proc getArray(address: pointer, offset: int = 0): ptr UncheckedArray[int] {.inline.} =
+  result = cast[ptr UncheckedArray[int]](calcAddress(address, offset))
+
+proc getArray(address: pointer, offset: uint = 0): ptr UncheckedArray[int] {.inline.} =
+  result = cast[ptr UncheckedArray[int]](calcAddress(address, offset))
+
+proc getMetadata(data: varargs[string, `$`]): seq[int] {.inline.} =
   #[
     Each number represents:
     0. Total number of elements within the structure
@@ -123,32 +135,38 @@ template getNumbers(data: varargs[string, `$`]): seq[int] =
     result[1] += element.len()
     result.add(element.len())
 
-template allocateFor(ma: allocator, data: seq[int]): pointer =
+proc allocateFor(ma: allocator, data: seq[int]): pointer {.inline.} =
   if data[0] == 0:
     result = nil
   else:
     result = result.ma(
       ALLOC,
       (
-        (sizeOf(int)*2) + # Number of elements & offset to offset list
+        (sizeOf(uint)*2) + # Number of elements & offset to offset list
         data[1] + # Total size of a packed array with all the elements
-        (sizeOf(int)*data[0]) # An offset for every element
+        (sizeOf(uint)*data[0]) # An offset for every element
       )
     )
 
-template copyData(
-  address: pointer,
-  data: varargs[string, `$`],
-  metadata: seq[int]
-) =
-  var aux: ptr UncheckedArray[int]
+proc writeMetadata(address: pointer, metadata: seq[int]) {.inline.} =
+  var
+    auxcast: ptr UncheckedArray[int]
+    auxsum: int = sizeOf(uint)*2
   if address != nil:
-    aux = cast[ptr UncheckedArray[int]](address)
-    aux[0] = metadata[0]
-    aux[1] = metadata[1] + sizeOf(int)*2
-    aux = cast[ptr UncheckedArray[int]](address + aux[1])
+    auxcast = getArray(address)
+    auxcast[0] = metadata[0]
+    auxcast[1] = metadata[1] + sizeOf(uint)*2
+    auxcast = getArray(address + auxcast[1])
     for index in 2..metadata.high():
-      aux[index-2] = metadata[index] # check and fix. This holds bytesize of elements, not offsets
+      auxsum += metadata[index]
+      auxcast[index-2] = auxsum
+
+proc writeData(address: pointer, data: varargs[string, `$`]) {.inline.} =
+  var
+    baseptr: pointer = calcAddress(address, sizeOf(uint)*2)
+    currentptr: pointer = baseptr
+  discard
+
 # =============================================================================
 # BUFFER OBJECT
 # =============================================================================
