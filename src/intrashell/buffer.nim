@@ -110,19 +110,19 @@ proc allocator*(
   characters, this module was made to only be able to manage those types.
 ]##
 
-proc calcAddress(address: pointer, offset: int = 0): pointer {.inline.} =
+proc calcAddress(address: pointer, offset: int = 0): pointer {.inline, raises: [].} =
   result = cast[pointer](cast[uint](address) + cast[uint](offset))
 
-proc calcAddress(address: pointer, offset: uint = 0): pointer {.inline.} =
+proc calcAddress(address: pointer, offset: uint = 0): pointer {.inline, raises: [].} =
   result = cast[pointer](cast[uint](address) + offset)
 
-proc getArray(address: pointer, offset: int = 0): ptr UncheckedArray[int] {.inline.} =
+proc getArray(address: pointer, offset: int = 0): ptr UncheckedArray[int] {.inline, raises: [].} =
   result = cast[ptr UncheckedArray[int]](calcAddress(address, offset))
 
-proc getArray(address: pointer, offset: uint = 0): ptr UncheckedArray[int] {.inline.} =
+proc getArray(address: pointer, offset: uint = 0): ptr UncheckedArray[int] {.inline, raises: [].} =
   result = cast[ptr UncheckedArray[int]](calcAddress(address, offset))
 
-proc getMetadata(data: varargs[string, `$`]): seq[int] {.inline.} =
+proc getMetadata(data: varargs[string, `$`]): seq[int] {.inline, raises: [].} =
   #[
     Each number represents:
     0. Total number of elements within the structure
@@ -135,91 +135,60 @@ proc getMetadata(data: varargs[string, `$`]): seq[int] {.inline.} =
     result[1] += element.len()
     result.add(element.len())
 
-proc allocateFor(ma: allocator, metadata: seq[int]): pointer {.inline.} =
-  if metadata[0] == 0:
-    result = nil
-  else:
-    result = result.ma(
-      ALLOC,
-      (
-        (sizeOf(uint)*2) + # Number of elements & offset to offset list
-        metadata[1] + # Total size of a packed array with all the elements
-        (sizeOf(uint)*metadata[0]) # An offset for every element
-      )
+proc allocateFor(ma: Allocator, metadata: seq[int]): pointer {.inline, raises: [].} =
+  result = result.ma(
+    ALLOC,
+    (
+      (sizeOf(uint)*2) + # Number of elements & offset to offset list
+      metadata[1] + # Total size of a packed array with all the elements
+      (sizeOf(uint)*metadata[0]) # An offset for every element
     )
+  )
 
-proc writeMetadata(address: pointer, metadata: seq[int]) {.inline.} =
+proc writeMetadata(address: pointer, metadata: seq[int]) {.inline, raises: [].} =
   var
-    auxcast: ptr UncheckedArray[int]
-    auxsum: int = sizeOf(uint)*2
-  if address != nil:
-    auxcast = getArray(address)
-    auxcast[0] = metadata[0]
-    auxcast[1] = metadata[1] + sizeOf(uint)*2
-    auxcast = getArray(address + auxcast[1])
-    for index in 2..metadata.high():
-      auxsum += metadata[index]
-      auxcast[index-2] = auxsum
+    auxcast: ptr UncheckedArray[int] = getArray(address) # turns into array
+    auxsum: int = sizeOf(uint)*2 # Points at the start of the data
+  auxcast[0] = metadata[0] # Sets length
+  auxcast[1] = metadata[1] + sizeOf(uint)*2 # Sets offset to metadata
+  auxcast = getArray(address + auxcast[1]) # Points at metadata
+  for index in 2..metadata.high(): # from first data element size to the last
+    auxsum += metadata[index] # data start + element size == offset to the end
+    auxcast[index-2] = auxsum # Assign the offset to the end of the element
 
-proc writeData(address: pointer, data: varargs[string, `$`]) {.inline.} =
-  var
-    baseptr: pointer = calcAddress(address, sizeOf(uint)*2)
-    currentptr: pointer = baseptr
-  discard
+proc writeData(address: pointer, data: varargs[string, `$`]) {.inline, raises: [].} =
+  var cursor: pointer = calcAddress(address, sizeOf(uint)*2)
+  for element in data:
+    cursor.copyMem(addr element[0], element.len)
+    cursor = calcAddress(cursor, element.len)
 
 # =============================================================================
 # BUFFER OBJECT
 # =============================================================================
 
-import intrashell/view
-export allocator, view
-
 type
   Buffer* = pointer
     ##[
-      Simulates a `seq[string]` in a flat structure. It is structured in the following way:
+      Simulates a `seq[string]` in a flat structure. It's structured like this:
 
-      |     Length   |          Offsets           |               Data         |
-      | ------------ | -------------------------- | -------------------------- |
-      | sizeOf(int)  | sizeOf(int) * (Length + 1) | max(Offsets) - min(Offsets)
+      |    Length    | Offset to metadata |   Data   |        Metadata       |
+      | ------------ | ------------------ | -------- | --------------------- |
+      | sizeOf(uint) |    sizeOf(uint)    | variable | Length * sizeOf(uint) |
 
       - Length: indicates the number of contained strings.
-      - Offsets: indexes that mark the end of each string.
+      - Offset to metadata: points at the start of the metadata
       - Data: The contained strings.
+      - Metadata: offsets that mark the end of each string.
     ]##
+
+proc deallocBuffer*(buffer: var Buffer, ma: Allocator = allocator) = 
+  buffer = buffer.ma(DEALLOC, 0)
 
 proc buildBuffer*(ma: Allocator = allocator, data: varargs[string, `$`]): Buffer {.raises: [].} =
   var metadata: seq[int] = getMetadata(data)
-  result = allocateFor(ma, metadata)
-  result.writeMetadata(metadata)
-  result.writeData(data)
-
-proc newBuffer*(buffer: var Buffer, strings: seq[string], allocator: Allocator = allocator) {.raises: [].} =
-  var
-    len: Natural = strings.len()
-    sizeOfOffsets: Natural = (2 + len) * sizeOf(int) # Includes lenght field and start offset
-    sizeOfData: Natural = 0
-    sizeOfBuffer: Natural = 0
-    counter1: Natural = 0
-    counter2: Natural = 0
-    auxView1: View[Natural]
-    auxView2: View[char]
-  for i in strings:
-    sizeOfData += i.len()
-  sizeOfBuffer = sizeOfOffsets + sizeOfData
-  buffer.dallocDarray(sizeOfBuffer, allocator)
-  if len > 0:
-    auxView1 = buffer.newAlternateView(0, sizeOfOffsets)
-    auxView1[0] = len # Number of strings within the buffer
-    auxView1[1] = sizeOfOffsets # Offset to the first character byte in the buffer
-    counter1 = sizeOfOffsets # Current offset
-    counter2 = 2 # Current index
-    for i in strings:
-      counter1 += i.len()
-      auxView1[counter2] = counter1
-      counter2.inc()
-    auxView1 = auxView1.newView(1, len)
-    for i in 0 ..< auxView1.len(): # TO FIX
-      auxView2 = buffer.newView(auxView1[i], auxView1[i+1] - auxView1[i])
-      auxView2.overwriteWith(strings[i], allocator)
-
+  if metadata[0] != 0:
+    result = allocateFor(ma, metadata)
+    result.writeMetadata(metadata)
+    result.writeData(data)
+  else:
+    result = nil
