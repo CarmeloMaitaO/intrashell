@@ -135,16 +135,16 @@ proc getMetadata(data: varargs[string, `$`]): seq[int] {.inline.} =
     result[1] += element.len()
     result.add(element.len())
 
-proc allocateFor(ma: allocator, data: seq[int]): pointer {.inline.} =
-  if data[0] == 0:
+proc allocateFor(ma: allocator, metadata: seq[int]): pointer {.inline.} =
+  if metadata[0] == 0:
     result = nil
   else:
     result = result.ma(
       ALLOC,
       (
         (sizeOf(uint)*2) + # Number of elements & offset to offset list
-        data[1] + # Total size of a packed array with all the elements
-        (sizeOf(uint)*data[0]) # An offset for every element
+        metadata[1] + # Total size of a packed array with all the elements
+        (sizeOf(uint)*metadata[0]) # An offset for every element
       )
     )
 
@@ -188,7 +188,13 @@ type
       - Data: The contained strings.
     ]##
 
-proc newBuffer*(buffer: var Buffer, strings: seq[string], allocator: HostAllocator = hostAllocator) {.raises: [].} =
+proc buildBuffer*(ma: Allocator = allocator, data: varargs[string, `$`]): Buffer {.raises: [].} =
+  var metadata: seq[int] = getMetadata(data)
+  result = allocateFor(ma, metadata)
+  result.writeMetadata(metadata)
+  result.writeData(data)
+
+proc newBuffer*(buffer: var Buffer, strings: seq[string], allocator: Allocator = allocator) {.raises: [].} =
   var
     len: Natural = strings.len()
     sizeOfOffsets: Natural = (2 + len) * sizeOf(int) # Includes lenght field and start offset
