@@ -180,11 +180,26 @@ type
       - Data: The contained strings.
       - Metadata: offsets that mark the end of each string.
     ]##
+  BufferBuilder* = pointer
+    ##[
+      Simulates a `seq[(pointer, int)]` in order to simplify the process of
+      writing bindings to other languages.
+
+      C, other languages, and different `malloc()` implementations have
+      different ways of storing the metadata of a memory allocation, so in order
+      to be able to read the data from Nim in a completely agnostic way, a
+      custom object is provided in the form of a flat memory structure, with the
+      following layout:
+
+      |    Length    |                Data               |
+      | ------------ | --------------------------------- |
+      | sizeOf(uint) |    (sizeOf(uint) * 2) * Length    |
+    ]##
 
 proc deallocBuffer*(buffer: var Buffer, ma: Allocator = allocator) = 
   buffer = buffer.ma(DEALLOC, 0)
 
-proc buildBuffer*(ma: Allocator = allocator, data: varargs[string, `$`]): Buffer {.raises: [].} =
+proc newBuffer*(ma: Allocator = allocator, data: varargs[string, `$`]): Buffer {.raises: [].} =
   var metadata: seq[int] = getMetadata(data)
   if metadata[0] != 0:
     result = allocateFor(ma, metadata)
@@ -192,3 +207,6 @@ proc buildBuffer*(ma: Allocator = allocator, data: varargs[string, `$`]): Buffer
     result.writeData(data)
   else:
     result = nil
+
+proc newBuffer*(ma: Allocator, data: cstringArray): Buffer {.raises: [].} =
+  result = newBuffer(ma, cstringArrayToSeq(data))
