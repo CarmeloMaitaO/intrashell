@@ -100,6 +100,8 @@ proc allocator*(
   characters, this module was made to only be able to manage those types.
 ]##
 
+const USIZE: int = sizeOf(uint) # Size in bytes of a single unsigned integer
+
 proc calcAddress(address: pointer, offset: int = 0): pointer {.inline, raises: [].} =
   result = cast[pointer](cast[uint](address) + cast[uint](offset))
 
@@ -129,7 +131,7 @@ type BufferBuilder* = pointer
 
     |    Length    |                Data               |
     | ------------ | --------------------------------- |
-    | sizeOf(uint) |    (sizeOf(uint) * 2) * Length    |
+    | USIZE        |       (USIZE * 2) * Length        |
 
     This layout allows us to store a collection of custom fat pointers to the
     actual data, which avoids unnecessary copies and null byte truncations
@@ -140,16 +142,23 @@ proc deallocBufferBuilder*(bb: var BufferBuilder) {.raises: [].} =
   bb = bb.allocator(DEALLOC, 0)
 
 proc newBufferBuilder*(): BufferBuilder {.raises: [].} =
-  result = result.allocator(ALLOC, sizeOf(uint))
+  result = result.allocator(ALLOC, USIZE)
   result.getArray()[0] = 0
 
-proc add*(bb: var BufferBuilder, address: pointer, size: int) {.raises: []} =
+proc add*(bb: var BufferBuilder, address: pointer, size: int) {.raises: [].} =
+  var tmp: BufferBuilder = (bb.getArray()[0] * (USIZE*2)) + size
   discard
 
-proc retrieveAddress*(bb: BufferBuilder, index: int): pointer {.raises: [].} =
+proc del*(bb: var BufferBuilder, index: int) {.raises: [].} =
   discard
 
-proc retrievesize*(bb: BufferBuilder, index: int): int {.raises: [].} =
+proc set*(bb: var BufferBuilder, index: int, address: pointer = nil, size: int = 0) {.raises: [].} =
+  discard
+
+proc getAddress*(bb: BufferBuilder, index: int): pointer {.raises: [].} =
+  discard
+
+proc getSize*(bb: BufferBuilder, index: int): int {.raises: [].} =
   discard
 
 # =============================================================================
