@@ -60,8 +60,7 @@ type
   AllocatorAction* = enum
     ALLOC = 0,
     DEALLOC = 1,
-    REALLOC = 2,
-    ZEROMEM = 3
+    ZEROMEM = 2
   allocator* = proc(
     address: pointer = nil,
     action: AllocatorAction,
@@ -86,15 +85,6 @@ proc allocator*(
     if address != nil:
       dealloc(address)
       result = nil
-  of REALLOC:
-    if (address != nil):
-      if newsize > 0:
-        realloc(address, newsize)
-      else:
-        dealloc(address)
-        result = nil
-    else:
-      result = alloc(newsize)
   of ZEROMEM:
     if (address != nil) and (newsize != 0):
       zeroMem(address, newsize)
@@ -121,6 +111,50 @@ proc getArray(address: pointer, offset: int = 0): ptr UncheckedArray[int] {.inli
 
 proc getArray(address: pointer, offset: uint = 0): ptr UncheckedArray[int] {.inline, raises: [].} =
   result = cast[ptr UncheckedArray[int]](calcAddress(address, offset))
+
+# =============================================================================
+# BUFFER BUILDER
+# =============================================================================
+ 
+type BufferBuilder* = pointer
+  ##[
+    Simulates a `seq[(pointer, int)]` in order to simplify the process of
+    writing bindings to other languages.
+
+    C, other languages, and different `malloc()` implementations have
+    different ways of storing the metadata of a memory allocation, so in order
+    to be able to read the data from Nim in a completely agnostic way, a
+    custom object is provided in the form of a flat memory structure, with the
+    following layout:
+
+    |    Length    |                Data               |
+    | ------------ | --------------------------------- |
+    | sizeOf(uint) |    (sizeOf(uint) * 2) * Length    |
+
+    This layout allows us to store a collection of custom fat pointers to the
+    actual data, which avoids unnecessary copies and null byte truncations
+    while providing enough information to build a new buffer object from it.
+  ]##
+
+proc deallocBufferBuilder*(bb: var BufferBuilder) {.raises: [].} =
+  bb = bb.allocator(DEALLOC, 0)
+
+proc newBufferBuilder*(): BufferBuilder {.raises: [].} =
+  result = result.allocator(ALLOC, sizeOf(uint))
+  result.getArray()[0] = 0
+
+proc add*(bb: var BufferBuilder, address: pointer, size: int) {.raises: []} =
+  discard
+
+proc retrieveAddress*(bb: BufferBuilder, index: int): pointer {.raises: [].} =
+  discard
+
+proc retrievesize*(bb: BufferBuilder, index: int): int {.raises: [].} =
+  discard
+
+# =============================================================================
+# BUFFER OBJECT
+# =============================================================================
 
 proc getMetadata(data: varargs[string, `$`]): seq[int] {.inline, raises: [].} =
   #[
@@ -162,39 +196,20 @@ proc writeData(address: pointer, data: varargs[string, `$`]) {.inline, raises: [
     cursor.copyMem(addr element[0], element.len)
     cursor = calcAddress(cursor, element.len)
 
-# =============================================================================
-# BUFFER OBJECT
-# =============================================================================
 
-type
-  Buffer* = pointer
-    ##[
-      Simulates a `seq[string]` in a flat structure. It's structured like this:
+type Buffer* = pointer
+  ##[
+    Simulates a `seq[string]` in a flat structure. It's structured like this:
 
-      |    Length    | Offset to metadata |   Data   |        Metadata       |
-      | ------------ | ------------------ | -------- | --------------------- |
-      | sizeOf(uint) |    sizeOf(uint)    | variable | Length * sizeOf(uint) |
+    |    Length    | Offset to metadata |   Data   |        Metadata       |
+    | ------------ | ------------------ | -------- | --------------------- |
+    | sizeOf(uint) |    sizeOf(uint)    | variable | Length * sizeOf(uint) |
 
-      - Length: indicates the number of contained strings.
-      - Offset to metadata: points at the start of the metadata
-      - Data: The contained strings.
-      - Metadata: offsets that mark the end of each string.
-    ]##
-  BufferBuilder* = pointer
-    ##[
-      Simulates a `seq[(pointer, int)]` in order to simplify the process of
-      writing bindings to other languages.
-
-      C, other languages, and different `malloc()` implementations have
-      different ways of storing the metadata of a memory allocation, so in order
-      to be able to read the data from Nim in a completely agnostic way, a
-      custom object is provided in the form of a flat memory structure, with the
-      following layout:
-
-      |    Length    |                Data               |
-      | ------------ | --------------------------------- |
-      | sizeOf(uint) |    (sizeOf(uint) * 2) * Length    |
-    ]##
+    - Length: indicates the number of contained strings.
+    - Offset to metadata: points at the start of the metadata
+    - Data: The contained strings.
+    - Metadata: offsets that mark the end of each string.
+  ]##
 
 proc deallocBuffer*(buffer: var Buffer, ma: Allocator = allocator) = 
   buffer = buffer.ma(DEALLOC, 0)
@@ -208,5 +223,5 @@ proc newBuffer*(ma: Allocator = allocator, data: varargs[string, `$`]): Buffer {
   else:
     result = nil
 
-proc newBuffer*(ma: Allocator, data: cstringArray): Buffer {.raises: [].} =
-  result = newBuffer(ma, cstringArrayToSeq(data))
+proc newBuffer*(ma: Allocator, data: BufferBuilder): Buffer {.raises: [].} =
+  result = newBuffer(ma, toSeq(data))
