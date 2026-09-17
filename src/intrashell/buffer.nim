@@ -140,16 +140,32 @@ type BufferBuilder* = pointer
 
 const BBES*: int = USIZE*2 ## Size in bytes of a single BufferBuilder element
 
-proc getBufferBuilderSize(length: int): int {.raises: [].} =
-  result = USIZE + BBES * length
+proc len*(bb: BufferBuilder): int {.raises: [].} =
+  result = -1
+  if bb != nil:
+    result = bb.getArray()[0]
 
 proc setLen(bb: var BufferBuilder, length: int) {.raises: [].} =
   if bb != nil:
     bb.getArray()[0] = length
 
-proc getIndexOffset(bb: BufferBuilder, index: int): int {.raises: [].} =
+proc getBufferBuilderSize(length: int): int {.raises: [].} =
+  result = USIZE + BBES * length
+
+proc getBufferBuilderSize(bb: BufferBuilder, index1: int, index2: int): int {.raises: [].} =
+  if (bb != nil) and (index1 in 0..(bb.len()-1)) and (index2 in 0..(bb.len()-1)):
+    if index1 < index2:
+      result = index2 - index1 + 1
+      result = result * BBES
+    elif index1 > index2:
+      result = index1 - index2 + 1
+      result = result * BBES
+    else:
+      result = BBES
+
+proc getBufferBuilderSize(bb: BufferBuilder, index: int): int {.raises: [].} =
   result = -1
-  if bb != nil:
+  if (bb != nil) and (index in 0..(bb.len()-1)):
     result = USIZE + BBES * index
 
 proc getIndexArray(bb: BufferBuilder, index: int): ptr UncheckedArray[int] {.raises: [].} =
@@ -163,11 +179,6 @@ proc deallocBufferBuilder*(bb: var BufferBuilder) {.raises: [].} =
 proc newBufferBuilder*(length: int = 0): BufferBuilder {.raises: [].} =
   result = result.allocator(ALLOC, getBufferBuilderSize(length))
   result.setLen(length)
-
-proc len*(bb: BufferBuilder): int {.raises: [].} =
-  result = -1
-  if bb != nil:
-    result = bb.getArray()[0]
 
 proc set*(bb: var BufferBuilder, index: int, address: pointer = nil, size: int = 0) {.raises: [].} =
   var aux: ptr UncheckedArray[int]
