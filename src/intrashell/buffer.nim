@@ -100,8 +100,6 @@ proc allocator*(
   characters, this module was made to only be able to manage those types.
 ]##
 
-const USIZE*: int = sizeOf(uint) ## Size in bytes of a single unsigned integer
-
 proc calcAddress(address: pointer, offset: int = 0): pointer {.inline, raises: [].} =
   result = cast[pointer](cast[uint](address) + cast[uint](offset))
 
@@ -127,18 +125,34 @@ type BufferBuilder* = pointer
     different ways of storing the metadata of a memory allocation, so in order
     to be able to read the data from Nim in a completely agnostic way, a
     custom object is provided in the form of a flat memory structure, with the
-    following layout (USIZE is the size in bytes of an unsigned integer):
+    following layout:
 
-    |    Length    |                Data               |
-    | ------------ | --------------------------------- |
-    | USIZE        |       (USIZE * 2) * Length        |
+    | Capacity |    Length    | Size  |                Data               |
+    | -------- | ------------ |------ | --------------------------------- |
+    |   USIZE  |     USIZE    | USIZE |          UPSIZE * Length          |
+
+    - USIZE: size in bytes of a single unsigned integer
+    - UPSIZE: size in bytes of a USIZE pair
 
     This layout allows us to store a collection of custom fat pointers to the
     actual data, which avoids unnecessary copies and null byte truncations
     while providing enough information to build a new buffer object from it.
+    Said information would be:
+
+    - Capacity: how many fat pointers it can store
+    - Length: how many fat pointers are stored
+    - Size: the sum of all the sizes declared by each fat pointer
+    - Data: the collection of fat pointers
+
+    **This structure/object is meant to be used for low-level bindings to
+    create higher-level ones**, therefore, it only provides procedures to
+    create it, populate it and deallocate it; modification beyond appending
+    is/will not be supported.
   ]##
 
-const BBES*: int = USIZE*2 ## Size in bytes of a single BufferBuilder element
+const
+  USIZE*: int = sizeOf(uint) ## Size in bytes of a single unsigned integer
+  UPSIZE*: int = USIZE*2 ## Size in bytes of a USIZE pair
 
 proc len*(bb: BufferBuilder): int {.raises: [].} =
   result = -1
@@ -196,40 +210,6 @@ proc add*(bb: var BufferBuilder, address: pointer, size: int) {.raises: [].} =
     tmp.setLen(bb.len() + 1)
     bb.deallocBufferBuilder()
     bb = tmp
-
-proc del*(bb: var BufferBuilder, index: int) {.raises: [].} =
-  var tmp: BufferBuilder
-  if bb != nil:
-    tmp = newBufferBuilder(bb.len() - 1)
-    if index == 0:
-      copyMem(
-        tmp.getIndexArray(0),
-        bb.getIndexArray(1),
-        bb.getBufferBuilderSize(1, bb.len() - 1)
-      )
-    elif index == (bb.len() - 1):
-      copyMem(
-        tmp.getIndexArray(0),
-        bb.getIndexArray(0),
-        bb.getBufferBuilderSize(bb.len() - 2)
-      )
-    else:
-      copyMem(
-        tmp.getIndexArray(0),
-        bb.getIndexArray(0),
-        bb.getBufferBuilderSize(index-1)
-      )
-      copyMem(
-        tmp.getIndexArray(index),
-        bb.getIndexArray(index+1),
-        bb.getBufferBuilderSize((index + 1), (bb.len() - 1))
-      )
-    tmp.setLen(bb.len() - 1)
-    bb.deallocBufferBuilder()
-    bb = tmp
-
-proc pop*(bb: var BufferBuilder) {.raises: [].} =
-  bb.del(bb.len()-1)
 
 proc getAddress*(bb: BufferBuilder, index: int): pointer {.raises: [].} =
   result = cast[pointer](bb.getIndexArray()[0])
