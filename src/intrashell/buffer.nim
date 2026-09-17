@@ -100,7 +100,7 @@ proc allocator*(
   characters, this module was made to only be able to manage those types.
 ]##
 
-const USIZE: int = sizeOf(uint) # Size in bytes of a single unsigned integer
+const USIZE*: int = sizeOf(uint) ## Size in bytes of a single unsigned integer
 
 proc calcAddress(address: pointer, offset: int = 0): pointer {.inline, raises: [].} =
   result = cast[pointer](cast[uint](address) + cast[uint](offset))
@@ -127,7 +127,7 @@ type BufferBuilder* = pointer
     different ways of storing the metadata of a memory allocation, so in order
     to be able to read the data from Nim in a completely agnostic way, a
     custom object is provided in the form of a flat memory structure, with the
-    following layout:
+    following layout (USIZE is the size in bytes of an unsigned integer):
 
     |    Length    |                Data               |
     | ------------ | --------------------------------- |
@@ -138,28 +138,93 @@ type BufferBuilder* = pointer
     while providing enough information to build a new buffer object from it.
   ]##
 
+const BBES*: int = USIZE*2 ## Size in bytes of a single BufferBuilder element
+
+proc getBufferBuilderSize(length: int): int {.raises: [].} =
+  result = USIZE + BBES * length
+
+proc setLen(bb: var BufferBuilder, length: int) {.raises: [].} =
+  if bb != nil:
+    bb.getArray()[0] = length
+
+proc getIndexOffset(bb: BufferBuilder, index: int): int {.raises: [].} =
+  result = -1
+  if bb != nil:
+    result = USIZE + BBES * index
+
+proc getIndexArray(bb: BufferBuilder, index: int): ptr UncheckedArray[int] {.raises: [].} =
+  result = nil
+  if bb != nil:
+    result = bb.getArray(bb.getIndexOffset(index))
+
 proc deallocBufferBuilder*(bb: var BufferBuilder) {.raises: [].} =
   bb = bb.allocator(DEALLOC, 0)
 
-proc newBufferBuilder*(): BufferBuilder {.raises: [].} =
-  result = result.allocator(ALLOC, USIZE)
-  result.getArray()[0] = 0
+proc newBufferBuilder*(length: int = 0): BufferBuilder {.raises: [].} =
+  result = result.allocator(ALLOC, getBufferBuilderSize(length))
+  result.setLen(length)
 
-proc add*(bb: var BufferBuilder, address: pointer, size: int) {.raises: [].} =
-  var tmp: BufferBuilder = (bb.getArray()[0] * (USIZE*2)) + size
-  discard
-
-proc del*(bb: var BufferBuilder, index: int) {.raises: [].} =
-  discard
+proc len*(bb: BufferBuilder): int {.raises: [].} =
+  result = -1
+  if bb != nil:
+    result = bb.getArray()[0]
 
 proc set*(bb: var BufferBuilder, index: int, address: pointer = nil, size: int = 0) {.raises: [].} =
-  discard
+  var aux: ptr UncheckedArray[int]
+  if (bb != nil) and (bb.len() > index):
+    aux = bb.getIndexArray(index)
+    aux[0] = cast[int](address)
+    aux[1] = size
+
+proc add*(bb: var BufferBuilder, address: pointer, size: int) {.raises: [].} =
+  var tmp: BufferBuilder
+  if bb != nil:
+    tmp = newBufferBuilder(bb.len() + 1)
+    copyMem(tmp, bb, getBufferBuilderSize(bb.len()))
+    tmp.set(bb.len(), address, size)
+    tmp.setLen(bb.len() + 1)
+    bb.deallocBufferBuilder()
+    bb = tmp
+
+proc del*(bb: var BufferBuilder, index: int) {.raises: [].} =
+  var tmp: BufferBuilder
+  if bb != nil:
+    tmp = newBufferBuilder(bb.len() - 1)
+    if index == 0:
+      copyMem(
+        tmp.getIndexArray(0),
+        bb.getIndexArray(1),
+        bb.getBufferBuilderSize(bb.len() - 1) - USIZE
+      )
+    elif index == (bb.len() - 1):
+      copyMem(
+        tmp.getIndexArray(0),
+        bb.getIndexArray(0),
+        bb.getBufferBuilderSize(bb.len() - 1) - USIZE
+      )
+    else:
+      copyMem(
+        tmp.getIndexArray(0),
+        bb.getIndexArray(0),
+        bb.getBufferBuilderSize(index) - USIZE
+      )
+      copyMem(
+        tmp.getIndexArray(index),
+        bb.getIndexArray(index+1),
+        bb.getBufferBuilderSize(bb.len() - index - 1) - USIZE
+      )
+    tmp.setLen(bb.len() - 1)
+    bb.deallocBufferBuilder()
+    bb = tmp
+
+proc pop*(bb: var BufferBuilder) {.raises: [].} =
+  bb.del(bb.len()-1)
 
 proc getAddress*(bb: BufferBuilder, index: int): pointer {.raises: [].} =
-  discard
+  result = cast[pointer](bb.getIndexArray()[0])
 
 proc getSize*(bb: BufferBuilder, index: int): int {.raises: [].} =
-  discard
+  result = bb.getIndexArray()[1]
 
 # =============================================================================
 # BUFFER OBJECT
