@@ -230,7 +230,7 @@ proc getSize*(bb: BufferBuilder, index: int): int {.raises: [].} =
 # BUFFER OBJECT
 # =============================================================================
 
-proc getMetadata(data: varargs[string, `$`]): seq[int] {.inline, raises: [].} =
+proc getMetadata(data: BufferBuilder): seq[int] {.inline, raises: [].} =
   #[
     Each number represents:
     0. Total number of elements within the structure
@@ -238,10 +238,11 @@ proc getMetadata(data: varargs[string, `$`]): seq[int] {.inline, raises: [].} =
     [2, n]. Total size in bytes of each element 
   ]#
   result = @[0, 0]
-  for index, element in data:
-    result[0] += 1
-    result[1] += element.len()
-    result.add(element.len())
+  if data != nil:
+    result[0] = data.len()
+    for index in 0..data.len()-1:
+      result[1] += data.getSize(index)
+      result.add(data.getSize(index))
 
 proc allocateFor(ma: Allocator, metadata: seq[int]): pointer {.inline, raises: [].} =
   result = result.ma(
