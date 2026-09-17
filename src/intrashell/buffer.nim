@@ -171,7 +171,7 @@ proc getBufferBuilderSize(bb: BufferBuilder, index: int): int {.raises: [].} =
 proc getIndexArray(bb: BufferBuilder, index: int): ptr UncheckedArray[int] {.raises: [].} =
   result = nil
   if bb != nil:
-    result = bb.getArray(bb.getIndexOffset(index))
+    result = bb.getArray(bb.getBufferBuilderSize(index))
 
 proc deallocBufferBuilder*(bb: var BufferBuilder) {.raises: [].} =
   bb = bb.allocator(DEALLOC, 0)
@@ -205,24 +205,24 @@ proc del*(bb: var BufferBuilder, index: int) {.raises: [].} =
       copyMem(
         tmp.getIndexArray(0),
         bb.getIndexArray(1),
-        bb.getBufferBuilderSize(bb.len() - 1) - USIZE
+        bb.getBufferBuilderSize(1, bb.len() - 1)
       )
     elif index == (bb.len() - 1):
       copyMem(
         tmp.getIndexArray(0),
         bb.getIndexArray(0),
-        bb.getBufferBuilderSize(bb.len() - 1) - USIZE
+        bb.getBufferBuilderSize(bb.len() - 2)
       )
     else:
       copyMem(
         tmp.getIndexArray(0),
         bb.getIndexArray(0),
-        bb.getBufferBuilderSize(index) - USIZE
+        bb.getBufferBuilderSize(index-1)
       )
       copyMem(
         tmp.getIndexArray(index),
         bb.getIndexArray(index+1),
-        bb.getBufferBuilderSize(bb.len() - index - 1) - USIZE
+        bb.getBufferBuilderSize((index + 1), (bb.len() - 1))
       )
     tmp.setLen(bb.len() - 1)
     bb.deallocBufferBuilder()
