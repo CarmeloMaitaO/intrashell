@@ -210,13 +210,32 @@ proc deallocBufferBuilder*(bb: var BufferBuilder) {.raises: [].} =
 # BUFFER OBJECT
 # =============================================================================
 
-proc allocateFor(ma: Allocator, metadata: seq[int]): pointer {.inline, raises: [].} =
+type Buffer* = pointer
+  ##[
+    Simulates a `seq[string]` in a flat structure. It's structured like this:
+
+    |    Length    |      Metadata    |       Data      |
+    | ------------ | ---------------- | --------------- |
+    |    USIZE     |  UPSIZE * Length |   Sum of sizes  |
+
+    - USIZE: size in bytes of a single unsigned integer
+    - UPSIZE: size in bytes of a USIZE pair
+
+    This layout is supposed to be a fully flat version of the BufferBuilder,
+    with all the strings/BLOBs copied into it, with each section containing:
+
+    - Length: indicates the number of contained strings.
+    - Metadata: Pair of offset and size of each string.
+    - Data: The contained strings.
+  ]##
+
+proc allocateFor(ma: Allocator, metadata: BufferBuilder): pointer {.inline, raises: [].} =
   result = result.ma(
     ALLOC,
     (
-      (sizeOf(uint)*2) + # Number of elements & offset to offset list
-      metadata[1] + # Total size of a packed array with all the elements
-      (sizeOf(uint)*metadata[0]) # An offset for every element
+      USIZE + # Length
+      UPSIZE * metadata.len() + # Metadata
+      metadata.size() # Data
     )
   )
 
@@ -236,21 +255,6 @@ proc writeData(address: pointer, data: varargs[string, `$`]) {.inline, raises: [
   for element in data:
     cursor.copyMem(addr element[0], element.len)
     cursor = calcAddress(cursor, element.len)
-
-
-type Buffer* = pointer
-  ##[
-    Simulates a `seq[string]` in a flat structure. It's structured like this:
-
-    |    Length    | Offset to metadata |       Data      |      Metadata    |
-    | ------------ | ------------------ | --------------- | ---------------- |
-    |    USIZE     |       USIZE        | UTSIZE * Length |   Length * USIZE |
-
-    - Length: indicates the number of contained strings.
-    - Offset to metadata: points at the start of the metadata
-    - Data: The contained strings.
-    - Metadata: offsets that mark the end of each string.
-  ]##
 
 proc deallocBuffer*(buffer: var Buffer, ma: Allocator = allocator) = 
   buffer = buffer.ma(DEALLOC, 0)
