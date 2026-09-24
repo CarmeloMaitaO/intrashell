@@ -48,6 +48,15 @@
 ]##
 
 # =============================================================================
+# PLATFORM DEPENDENT CONSTANTS
+# =============================================================================
+
+const
+  UINTSIZE*: Natural = sizeOf(uint) ## Size in bytes of a single unsigned integer
+  UPSIZE*: Natural = UINTSIZE*2 ## Size in bytes of a UINTSIZE pair
+  UTSIZE*: Natural = UINTSIZE*3 ## Size in bytes of a UINTSIZE trio
+
+# =============================================================================
 # EXTERNAL ALLOCATOR
 # =============================================================================
 #[
@@ -127,12 +136,12 @@ type BufferBuilder* = pointer
     custom object is provided in the form of a flat memory structure, with the
     following layout:
 
-    | Capacity |    Length    | Size  |                Data               |
-    | -------- | ------------ |------ | --------------------------------- |
-    |   USIZE  |     USIZE    | USIZE |          UPSIZE * Length          |
+    |   Capacity  |    Length    |   Size   |        Data        |
+    | ----------- | ------------ |--------- | ------------------ |
+    |   UINTSIZE  |    UINTSIZE  | UINTSIZE |  UPSIZE * Length   |
 
-    - USIZE: size in bytes of a single unsigned integer
-    - UPSIZE: size in bytes of a USIZE pair
+    - UINTSIZE: size in bytes of a single unsigned integer
+    - UPSIZE: size in bytes of a UINTSIZE pair
 
     This layout allows us to store a collection of custom fat pointers to the
     actual data, which avoids unnecessary copies and null byte truncations
@@ -149,11 +158,6 @@ type BufferBuilder* = pointer
     only provides procedures to create it, populate it and deallocate it;
     modification beyond appending is/will not be supported.
   ]##
-
-const
-  USIZE*: Natural = sizeOf(uint) ## Size in bytes of a single unsigned integer
-  UPSIZE*: Natural = USIZE*2 ## Size in bytes of a USIZE pair
-  UTSIZE*: Natural = USIZE*3 ## Size in bytes of a USIZE trio
 
 proc len*(bb: BufferBuilder): int {.raises: [].} =
   result = bb.getArray()[1]
@@ -216,10 +220,10 @@ type Buffer* = pointer
 
     |    Length    |      Metadata    |       Data      |
     | ------------ | ---------------- | --------------- |
-    |    USIZE     |  UPSIZE * Length |   Sum of sizes  |
+    |    UINTSIZE     |  UPSIZE * Length |   Sum of sizes  |
 
-    - USIZE: size in bytes of a single unsigned integer
-    - UPSIZE: size in bytes of a USIZE pair
+    - UINTSIZE: size in bytes of a single unsigned integer
+    - UPSIZE: size in bytes of a UINTSIZE pair
 
     This layout is supposed to be a fully flat version of the BufferBuilder,
     with all the strings/BLOBs copied into it, with each section containing:
@@ -233,7 +237,7 @@ proc allocateFor(ma: Allocator, metadata: BufferBuilder): pointer {.inline, rais
   result = result.ma(
     ALLOC,
     (
-      USIZE + # Length
+      UINTSIZE + # Length
       UPSIZE * metadata.len() + # Metadata
       metadata.size() # Data
     )
