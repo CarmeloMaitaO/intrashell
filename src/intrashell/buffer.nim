@@ -48,10 +48,12 @@
 ]##
 
 # =============================================================================
-# PLATFORM DEPENDENT CONSTANTS
+# CONSTANTS
 # =============================================================================
 
 const
+  PTRSIZE: Natural = sizeOf(pointer) # Size of
+  OFFSIZE: Natural = sizeOf(int32)   # Size of an int32. It is 32 bits. 8 bytes
   UINTSIZE*: Natural = sizeOf(uint) ## Size in bytes of a single unsigned integer
   UPSIZE*: Natural = UINTSIZE*2 ## Size in bytes of a UINTSIZE pair
   UTSIZE*: Natural = UINTSIZE*3 ## Size in bytes of a UINTSIZE trio
@@ -109,17 +111,11 @@ proc allocator*(
   characters, this module was made to only be able to manage those types.
 ]##
 
-proc calcAddress(address: pointer, offset: int = 0): pointer {.inline, raises: [].} =
-  result = cast[pointer](cast[uint](address) + cast[uint](offset))
+template calcAddress(address: pointer, offset: uint32 = 0): pointer =
+  (cast[pointer](cast[uint](address) + offset))
 
-proc calcAddress(address: pointer, offset: uint = 0): pointer {.inline, raises: [].} =
-  result = cast[pointer](cast[uint](address) + offset)
-
-proc getArray(address: pointer, offset: int = 0): ptr UncheckedArray[int] {.inline, raises: [].} =
-  result = cast[ptr UncheckedArray[int]](calcAddress(address, offset))
-
-proc getArray(address: pointer, offset: uint = 0): ptr UncheckedArray[int] {.inline, raises: [].} =
-  result = cast[ptr UncheckedArray[int]](calcAddress(address, offset))
+template getArray(address: pointer, offset: uint32 = 0): ptr UncheckedArray[int32] =
+  (cast[ptr UncheckedArray[int]](calcAddress(address, offset)))
 
 # =============================================================================
 # BUFFER BUILDER
