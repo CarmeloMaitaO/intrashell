@@ -48,17 +48,6 @@
 ]##
 
 # =============================================================================
-# CONSTANTS
-# =============================================================================
-
-const
-  PTRSIZE: Natural = sizeOf(pointer) # Size of
-  OFFSIZE: Natural = sizeOf(int32)   # Size of an int32. It is 32 bits. 8 bytes
-  UINTSIZE*: Natural = sizeOf(uint) ## Size in bytes of a single unsigned integer
-  UPSIZE*: Natural = UINTSIZE*2 ## Size in bytes of a UINTSIZE pair
-  UTSIZE*: Natural = UINTSIZE*3 ## Size in bytes of a UINTSIZE trio
-
-# =============================================================================
 # EXTERNAL ALLOCATOR
 # =============================================================================
 #[
@@ -71,16 +60,22 @@ type
   AllocatorAction* = enum
     ALLOC = 0,
     DEALLOC = 1,
-    ZEROMEM = 2
+    REALLOC = 2,
+    ZEROMEM = 3,
+    COPYMEM = 4
   allocator* = proc(
-    address: pointer = nil,
+    fromAddress: pointer = nil,
+    oldSize: Natural,
     action: AllocatorAction,
+    toAddress: pointer = nil,
     newsize: Natural
   ): pointer {.cdecl, raises: [].}
 
 proc allocator*(
-  address: pointer = nil,
+  fromAddress: pointer = nil,
+  oldSize: Natural,
   action: AllocatorAction,
+  toAddress: pointer = nil,
   newsize: Natural
 ): pointer {.cdecl, raises: [].} =
   result = address
@@ -96,30 +91,66 @@ proc allocator*(
     if address != nil:
       dealloc(address)
       result = nil
+  of REALLOC:
+    discard
   of ZEROMEM:
     if (address != nil) and (newsize != 0):
       zeroMem(address, newsize)
     result = address
+  of COPYMEM:
+    discard
 
 # =============================================================================
-# HELPERS
+# CONSTANTS
 # =============================================================================
 
-##[
-  This is the helper module for allocating memory using the Allocator module
-  creating views to it. Given that the Buffer type only supports numbers and
-  characters, this module was made to only be able to manage those types.
-]##
+const
+  S8*: Natural = sizeOf(uint8)     ## Size of a single uint8. It is 1 byte.
+  S16*: Natural = sizeOf(uint16)   ## Size of a single uint16. It is 2 bytes.
+  S32*: Natural = sizeOf(uint32)   ## Size of a single uint32. It is 4 bytes.
+  SPTR*: Natural = sizeOf(pointer) ## Size of a pointer. Platform dependent.
 
-template calcAddress(address: pointer, offset: uint32 = 0): pointer =
-  (cast[pointer](cast[uint](address) + offset))
-
-template getArray(address: pointer, offset: uint32 = 0): ptr UncheckedArray[int32] =
-  (cast[ptr UncheckedArray[int]](calcAddress(address, offset)))
+type
+  ExitCodes*  {.size: S8.} = enum
+    OK    = 0,
+    ERROR = 1
+  BufferDataTypes* {.size: S8.} = enum
+    BOOL     =  0,
+    UINT8    =  1,
+    UINT16   =  2,
+    UINT32   =  3,
+    UINT64   =  4,
+    INT8     =  5,
+    INT16    =  6,
+    INT32    =  7,
+    INT64    =  8,
+    ENUM8    =  9,
+    ENUM16   = 10,
+    ENUM32   = 11,
+    ENUM64   = 12,
+    BITSET8  = 13,
+    BITSET16 = 14,
+    BITSET32 = 15,
+    BITSET64 = 16,
+    STRING   = 17,
+    BLOB     = 18,
+    POINTER  = 19
 
 # =============================================================================
 # BUFFER BUILDER
 # =============================================================================
+
+type
+  BufferBuilderMetadata* = tuple
+    exitCode: ExitCodes
+    capacity: uint32
+    length: uint32
+    size: uint32
+  BufferBuilderDataElement* = tuple
+    type: BufferDataTypes
+    payload: uint64 ## Can be either the plain value, or a pointer to the data.
+    length: uint32  ## If type is equal to POINTER, then it's its length.
+  BufferBuilderData* = ptr UncheckedArray[BufferBuilderDataElement]
  
 type BufferBuilder* = pointer
   ##[
