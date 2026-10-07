@@ -51,3 +51,6 @@ task docgen, "Generate the documentation for this project":
 
 task tag, "Outputs the current version of the package inside a file called `version`":
   writeFile("version", version)
+
+task summary, "Outputs a summary of this repository":
+  run "nim r --verbosity:0 -w:off --hints:off CI/getSummary.nim './' '.git'"

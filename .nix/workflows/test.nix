@@ -15,7 +15,7 @@
     }; # apps
     githubActions.workflows.test = {
       name = "Test";
-      on.push.branches = ["dev"];
+      on.push.branches = ["main"];
       on.push.paths = ["intrashell.nimble"];
       permissions = {
         contents = "write";

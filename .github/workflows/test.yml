@@ -15,7 +15,7 @@ name: Test
 "on":
   push:
     branches:
-      - dev
+      - main
     paths:
       - intrashell.nimble
 permissions:

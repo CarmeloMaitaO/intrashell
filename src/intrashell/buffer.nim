@@ -124,17 +124,19 @@ type
     INT16    =  6,
     INT32    =  7,
     INT64    =  8,
-    ENUM8    =  9,
-    ENUM16   = 10,
-    ENUM32   = 11,
-    ENUM64   = 12,
-    BITSET8  = 13,
-    BITSET16 = 14,
-    BITSET32 = 15,
-    BITSET64 = 16,
-    STRING   = 17,
-    BLOB     = 18,
-    POINTER  = 19
+    FLOAT32  =  9,
+    FLOAT64  = 10
+    ENUM8    = 11,
+    ENUM16   = 12,
+    ENUM32   = 13,
+    ENUM64   = 14,
+    BITSET8  = 15,
+    BITSET16 = 16,
+    BITSET32 = 17,
+    BITSET64 = 18,
+    STRING   = 19,
+    BLOB     = 20,
+    OBJECT   = 21
 
 # =============================================================================
 # BUFFER BUILDER
@@ -148,8 +150,9 @@ type
     size: uint32
   BufferBuilderDataElement* = tuple
     type: BufferDataTypes
-    payload: uint64 ## Can be either the plain value, or a pointer to the data.
-    length: uint32  ## If type is equal to POINTER, then it's its length.
+    length: uint32  ## If type is equal to STRING/BLOB/OBJECT, then it's its length.
+    payloadLow: uint32
+    payloadHigh: uint32 ## Can be either the plain value, or a pointer to the data.
   BufferBuilderData* = ptr UncheckedArray[BufferBuilderDataElement]
  
 type BufferBuilder* = pointer
