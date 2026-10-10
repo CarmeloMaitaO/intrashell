@@ -58,46 +58,135 @@
 
 type
   AllocatorAction* = enum
-    ALLOC = 0,
-    DEALLOC = 1,
-    REALLOC = 2,
-    ZEROMEM = 3,
-    COPYMEM = 4
+    ##[
+      Enumeration for the possible actions that the allocator can perform:
+
+      0. `ALLOC`: allocates a new block of memory.
+      1. `DEALLOC`: deallocates a block of memory.
+      2. `REALLOC`: reallocates the memory from one block to another.
+      3. `ZEROMEM`: zeroes a given block of memory.
+      4. `COPYMEM`: copies one block of memory into another.
+      5. `ALLOC0`: allocates a new block of memory and initializes it to `0`.
+      6. `REALLOC0`: reallocates the memory from one block to another after
+         initializing the new block to `0`.
+      7. `COPYMEM0`: copies one block of memory into another after initializing
+         the last one to `0`.
+                     
+    ]##
+    ALLOC    = 0,
+    DEALLOC  = 1,
+    REALLOC  = 2,
+    ZEROMEM  = 3,
+    COPYMEM  = 4,
+    ALLOC0   = 5,
+    REALLOC0 = 6,
+    COPYMEM0 = 7
   allocator* = proc(
-    fromAddress: pointer = nil,
-    oldSize: Natural,
+    fromAddress: pointer,
+    fromSize: Natural,
     action: AllocatorAction,
-    toAddress: pointer = nil,
-    newsize: Natural
+    toAddress: pointer,
+    toSize: Natural
   ): pointer {.cdecl, raises: [].}
+    ##[
+      The signature for the allocator. Rather than a tuple containing pointers
+      to the individual allocator functions, it is a single procedure for the
+      sake of simplifying the binding process. It also helps with performance,
+      as it is a single pointer that must be followed for the procedure instead
+      of two.
+    ]##
 
 proc allocator*(
-  fromAddress: pointer = nil,
-  oldSize: Natural,
+  fromAddress: pointer,
+  fromSize: Natural,
   action: AllocatorAction,
-  toAddress: pointer = nil,
-  newsize: Natural
+  toAddress: pointer,
+  toSize: Natural
 ): pointer {.cdecl, raises: [].} =
-  result = address
+  ##[
+    The allocator procedure of Intrashell. It should be used for managing the
+    lifecycle of any created `Buffer` types, as this allows modules and hosts
+    alike to manage them without worrying about where are the `Buffer` types
+    allocated; they are always allocated in the address space of Intrashell.
+    This also allows both hosts and modules to benefit from the performance
+    improvements that Nim provides with it's internal allocator, as the memory
+    is not returned inmediately to the host OS, but rather kept by the process
+    until it either reuses it or deems it unnecesary and performs the actual
+    system call to free it.
+
+    The supported actions, their behaviour and their accepted parameters are:
+
+    0. ALLOC (`fromAddress`, `fromSize`): allocates a block of the `fromSize` size. If:
+       - `fromAddress` **is** `nil`: simply allocates the block
+       - `fromAddress` **is not** `nil`: deallocates the address and returns the
+          new block
+    1. DEALLOC (`fromAddress`): deallocates the given block (if not `nil`).
+    2. REALLOC (`fromAddress`, `fromSize`, `toSize`): moves one block of memory
+       into a new one. if...
+       - `fromAddress` is `nil`: simply allocates based on `toSize`
+       - `fromSize` is less or equal to `0`: deallocates and the creates a new
+         block without copying the data from the previous one.
+       - `toSize` is less or equal to `0`: simply deallocates the block.
+    3. ZEROMEM (`fromAddress`, `fromSize`): zeroes the given memory block.
+    4. COPYMEM (all): copies one block of memory into another. if...:
+       - `fromAddress` is 
+    5. `ALLOC0` (same as `ALLOC`): same as `ALLOC`, but initializes the block to
+       `0`.
+    6. `REALLOC0` (same as `REALLOC`): same as `REALLOC`, but initializes the
+       new memory block to `0` before performing the copy of the data.
+    7. `COPYMEM0` (same as `COPYMEM`): same as `COPYMEM`, but zeroes the target
+       memory block before performing the copy.
+  ]##
+  result = fromAddress
   case action
   of ALLOC:
-    if address == nil:
-      if newsize > 0:
-        result = alloc(newsize)
+    if fromAddress == nil:
+      if fromSize > 0:
+        result = alloc(fromSize)
     else:
-      dealloc(address)
-      result = alloc(newsize)
+      dealloc(fromAddress)
+      result = alloc(fromSize)
   of DEALLOC:
-    if address != nil:
-      dealloc(address)
+    if fromAddress != nil:
+      dealloc(fromAddress)
       result = nil
-  of REALLOC:
-    discard
+  of REALLOC: # Uses fromAddress, fromSize, toSize
+    if fromAddress == nil: # Will allocate
+      if toSize > 0:
+        result = alloc(toSize)
+    elif fromSize <= 0:    # Will deallocate and then allocate
+      dealloc(fromAddress)
+      if toSize > 0:
+        result = alloc(toSize)
+      else:
+        result = nil
+    elif toSize <= 0:      # Will deallocate
+      dealloc(fromAddress)
+      result = nil
+    else:                  # Will reallocate
+      result = alloc(toSize)
+      if toSize > fromSize:
+        copyMem(result, fromAddress, fromSize)
+      else:
+        copyMem(result, fromAddress, toSize)
+      dealloc(fromAddress)
   of ZEROMEM:
-    if (address != nil) and (newsize != 0):
-      zeroMem(address, newsize)
-    result = address
-  of COPYMEM:
+    if (fromAddress != nil) and (fromSize > 0):
+      zeroMem(fromAddress, fromSize)
+    result = fromAddress
+  of COPYMEM: # Uses fromAddress, fromSize, toAddress, toSize
+    if (fromAddress != nil) and (toAddress != nil):
+      if toSize >= fromSize:
+        copyMem(toAddress, fromAddress, fromSize)
+      else:
+        copyMem(toAddress, fromAddress, toSize)
+    else:
+      result = nil
+  of ALLOC0:
+    discard
+  of REALLOC0:
+    discard
+  of COPYMEM0:
     discard
 
 # =============================================================================
@@ -111,10 +200,15 @@ const
   SPTR*: Natural = sizeOf(pointer) ## Size of a pointer. Platform dependent.
 
 type
-  ExitCodes*  {.size: S8.} = enum
-    OK    = 0,
-    ERROR = 1
-  BufferDataTypes* {.size: S8.} = enum
+  ExitCodes*  {.size: S16.} = enum
+    OK                = 0,
+    UnknownCommand    = 1,
+    UnknownSubCommand = 2,
+    WrongParameters   = 3,
+    CommandFailed     = 4,
+    IncompatibleState = 5, # Only used for liveness hook
+    BadShape          = 6
+  BufferDataTypes* {.size: S32.} = enum
     BOOL     =  0,
     UINT8    =  1,
     UINT16   =  2,
@@ -126,14 +220,6 @@ type
     INT64    =  8,
     FLOAT32  =  9,
     FLOAT64  = 10
-    ENUM8    = 11,
-    ENUM16   = 12,
-    ENUM32   = 13,
-    ENUM64   = 14,
-    BITSET8  = 15,
-    BITSET16 = 16,
-    BITSET32 = 17,
-    BITSET64 = 18,
     STRING   = 19,
     BLOB     = 20,
     OBJECT   = 21

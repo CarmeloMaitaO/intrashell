@@ -4,6 +4,9 @@
       packages = with pkgs; [
         nim
         nimble
+        swig
+        rust-bindgen
+        zig # translate-c
       ];
     };
   };
