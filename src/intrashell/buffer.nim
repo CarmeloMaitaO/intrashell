@@ -134,7 +134,7 @@ const
   SPTR*: Natural = sizeOf(pointer) ## Size of a pointer. Platform dependent.
 
 type
-  ExitCodes*  {.size: S16.} = enum
+  ExitCodes*  {.size: S8.} = enum
     ##[
       The exit code of any dispatch call. It can either be `OK`, which means no
       errors, or any of the other specific error types provided. This
@@ -149,7 +149,7 @@ type
     CommandFailed     = 4,
     IncompatibleState = 5, # Only used for liveness hook
     BadShape          = 6
-  BufferDataTypes* {.size: S32.} = enum
+  BufferDataTypes* {.size: S8.} = enum
     ##[
       The data type of the `BufferBuilderDataElement` and the `BufferElement`.
       It is meant to tell what kind of data is contained within it so it can be
@@ -192,9 +192,9 @@ type
          force this field to wrap around, so it will be silently ignored.
     ]##
     exitCode: ExitCodes
-    version: uint16
-    capacity: uint32
-    length: uint32
+    version: uint8
+    capacity: uint8
+    length: uint8
     size: uint32
   BufferBuilderDataElement* = tuple
     ##[
@@ -205,49 +205,55 @@ type
     length: uint32  ## If type is equal to STRING/BLOB/OBJECT, then it's its length.
     payloadLow: uint32
     payloadHigh: uint32 ## Can be either the plain value, or a pointer to the data.
-  BufferBuilderData* = ptr UncheckedArray[BufferBuilderDataElement]
-    ## Represents an array of `BufferBuilderDataElement` objects.
+  BufferBuilderObj* = tuple
+    ##[
+      Simulates a `seq[objectVariant]`, where each contained object is either
+      an scalar type or a fat pointer to a flat structure.
+
+      Each programming language have it's own way of storing the metadata of its
+      memory allocations, along with different ways of managing it through traced
+      or untraced references (GC or manual with different allocators), so in order
+      to create a composite flat object that can be passed across memory
+      boundaries without causing a segmentation fault, it is necessary to first
+      collect the metadata of the values before actually building this object.
+
+      Which lead to the creation of this structure (`BufferBuilderObj`), which
+      is composed by a `BufferBuilderMetadata` and an array of
+      `BufferBuilderData` structures. This structure will store all the scalar
+      data, and the metadata of the flat structures so then it can be processed
+      into a `Buffer` object. It's memory layout is the following:
+
+      |     **Field**     | BufferBuilderMetadata |      BufferBuilderData     |
+      | ----------------- | --------------------- |--------------------------- |
+      | **Size in bytes** |          16           |         16 * length        |
+
+      **This structure/object is provided in the low-level bindings and is meant
+      to be used to create higher-level ones**
+    ]##
+    metadata: BufferBuilderMetadata
+    data: UncheckedArray[BufferBuilderDataElement]
  
-type BufferBuilder* = pointer
+type BufferBuilder* = ptr BufferBuilderObj
   ##[
-    Simulates a `seq[objectVariant]` in an opaque pointer, where each contained
-    object is either an scalar type or a fat pointer to a flat structure.
-
-    Each programming language have it's own way of storing the metadata of its
-    memory allocations, along with different ways of managing it through traced
-    or untraced references (GC or manual with different allocators), so in order
-    to create a composite flat object that can be passed across memory
-    boundaries without causing a segmentation fault, it is necessary to first
-    collect the metadata of the values before actually building this object.
-
-    Which lead to the creation of this structure (`BufferBuilder`), which is
-    composed by a `BufferBuilderMetadata` and a `BufferBuilderData` structures.
-    This structure will store all the scalar data, and the metadata of the flat
-    structures so then it can be processed into a `Buffer` object. It's
-    memory layout is the following:
-
-    |     **Field**     | BufferBuilderMetadata |      BufferBuilderData     |
-    | ----------------- | --------------------- |--------------------------- |
-    | **Size in bytes** |          16           |         16 * length        |
-
-    **This structure/object is meant to be used for low-level bindings to
-    create higher-level ones**, therefore, it doesn't have safety checks and
-    only provides procedures to create it, populate it and deallocate it;
-    modification beyond appending won't be supported.
+    **Use this type instead of `BufferBuilderObj`.**
   ]##
 
 const
-  BufferBuilderMetadataSize*: uint32 = cast[uint32](sizeOf(BufferBuilderMetadata))
-  BufferBuilderDataElementSize*: uint32 = cast[uint32](sizeOf(BufferBuilderDataElement))
+  BufferBuilderMetadataSize*: uint32 = cast[uint32](
+    sizeOf(BufferBuilderMetadata)
+  )
+  BufferBuilderDataElementSize*: uint32 = cast[uint32](
+    sizeOf(BufferBuilderDataElement)
+  )
 
-proc getBufferBuilderSize(cap: uint32): uint32 =
+proc getBufferBuilderSize*(cap: uint32): uint32 =
   BufferBuilderMetadataSize + BufferBuilderDataElementSize * cap
 
 proc reallocBufferBuilder*(bb: BufferBuilder, step: uint32): BufferBuilder {.raises: [].} =
   var
     aux: ptr BufferBuilderMetadata = cast[ptr BufferBuilderMetadata](bb)
     tcap: uint32 = aux.capacity + step
-  result = bb.allocator(REALLOC, getBufferBuilderSize(tcap))
+  result = bb.allocator(REALLOC0, getBufferBuilderSize(tcap))
 
 proc allocBufferBuilder*(cap: uint32 = 19): BufferBuilder {.raises: [].} =
   ##[
@@ -261,10 +267,11 @@ proc allocBufferBuilder*(cap: uint32 = 19): BufferBuilder {.raises: [].} =
     - If it is too big: it will consume more RAM than necessary per request,
       bloating your system.
   ]##
-  s
+  result = result.allocator(ALLOC0, getBufferBuilderSize(cap))
+  result.version = 
 
 proc deallocBufferBuilder*(bb: var BufferBuilder) {.raises: [].} =
-  discard
+  discard bb.allocator(DEALLOC)
 
 # =============================================================================
 # BUFFER OBJECT
