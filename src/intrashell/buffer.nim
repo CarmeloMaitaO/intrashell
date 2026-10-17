@@ -54,12 +54,9 @@ type
     WrongParameters   = 2,
     CommandFailed     = 3
   BufferObj* = tuple
-    exitCode: ExitCodes
-    size: uint32
-    data: UncheckedArray[byte]
-  Buffer* = pointer
     ##[
-      Simulates a `seq[string]` in a flat structure. It's structured like this:
+      A flat structure for transmitting data across memory boundaries. It's
+      structured like this:
 
       | **FIELD** | Exit Code |     Size     |   Data   |
       | --------- | --------- | ------------ | -------- |
@@ -69,6 +66,24 @@ type
       - Size: the size in bytes of the Buffer.
       - Data: the contained data.
     ]##
+    exitCode: ExitCodes
+    size: uint32
+    data: UncheckedArray[byte]
+  Buffer* = ptr BufferObj
 
 const
   baseBufferSize: uint32 = cast[uint32](sizeOf(BufferObj))
+
+proc newBuffer*(
+  allocator: Allocator,
+  size: uint32
+): Buffer {.cdecl, exportc, raises: [].} =
+  return cast[Buffer](
+    allocator(nil, ALLOC0, size, nil)
+  )
+
+proc destroyBuffer*(
+  allocator: Allocator,
+  buffer: Buffer
+) {.cdecl, exportc, raises: [].} =
+  discard allocator(buffer, DEALLOC, 0u32, nil)

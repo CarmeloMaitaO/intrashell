@@ -19,6 +19,8 @@
 ##[
  This is the allocator procedure; its function is to make Intrashell's allocator
  available to both the modules and the host.
+
+ **THIS IS AN INTERNAL MODULE; THERE'S NO NEED TO CREATE BINDINGS TO IT**
 ]##
 
 type
@@ -44,33 +46,29 @@ type
     action: AllocatorAction,
     size: uint32 = 0,
     src: pointer = nil
-  ): pointer {.raises: [].}
+  ): pointer {.nimcall, raises: [].}
     ##[
-      The signature for the allocator. Rather than a tuple containing pointers
-      to the individual allocator functions, it is a single procedure for the
-      sake of simplifying the binding process. It also helps with performance,
-      as it avoids pointer-chasing.
+      The allocator procedure signature of Intrashell. Rather than a tuple
+      containing pointers to the individual allocator functions, it is a single
+      procedure for the sake of simplifying the binding process. Its supported
+      actions, their behaviour and their accepted parameters are:
+
+      0. ALLOC(size): allocates a new memory block of `size` bytes.
+      1. DEALLOC(dest): deallocates a given memory block.
+      2. REALLOC(dest, size): creates a new memory block of the given `size` and
+         copies the previous block into it. Deallocates the previous block after.
+      3. ZEROMEM(dest, size): zeroes a block of memory
+      4. COPYMEM(dest, size, src): copies `size` bytes from a memory block into
+         another.
+      5. ALLOC0(size): same as `ALLOC` but zeroes the memory block.
     ]##
 
-proc allocator*(
+proc allocator(
   dest: pointer,
   action: AllocatorAction,
   size: uint32 = 0,
   src: pointer = nil
 ): pointer {.raises: [].} =
-  ##[
-    The allocator procedure of Intrashell. Its supported actions, their
-    behaviour and their accepted parameters are:
-
-    0. ALLOC(size): allocates a new memory block of `size` bytes.
-    1. DEALLOC(dest): deallocates a given memory block.
-    2. REALLOC(dest, size): creates a new memory block of the given `size` and
-       copies the previous block into it. Deallocates the previous block after.
-    3. ZEROMEM(dest, size): zeroes a block of memory
-    4. COPYMEM(dest, size, src): copies `size` bytes from a memory block into
-       another.
-    5. ALLOC0(size): same as `ALLOC` but zeroes the memory block.
-  ]##
   result = dest
   case action
   of ALLOC, ALLOC0:
@@ -89,3 +87,6 @@ proc allocator*(
   of COPYMEM:
     copyMem(dest, src, size)
     result = dest
+
+proc getAllocator*(): Allocator =
+  return allocator
