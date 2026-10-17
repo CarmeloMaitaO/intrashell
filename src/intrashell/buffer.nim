@@ -50,9 +50,10 @@ type
       handle this matter as they see fit based on the returned value.
     ]##
     OK                = 0,
-    UnknownCommand    = 1,
-    WrongParameters   = 2,
-    CommandFailed     = 3
+    BufferOverflown   = 1,
+    UnknownCommand    = 2,
+    WrongParameters   = 3,
+    CommandFailed     = 4
   BufferObj* = tuple
     ##[
       A flat structure for transmitting data across memory boundaries. It's
@@ -72,15 +73,26 @@ type
   Buffer* = ptr BufferObj
 
 const
-  baseBufferSize: uint32 = cast[uint32](sizeOf(BufferObj))
+  baseBufferSize*: uint32 = cast[uint32](sizeOf(BufferObj))
+  maxBufferSize*: uint32 = high(uint32) - baseBufferSize
 
 proc newBuffer*(
   allocator: Allocator,
+  exitCode: ExitCodes,
   size: uint32
 ): Buffer {.cdecl, exportc, raises: [].} =
-  return cast[Buffer](
-    allocator(nil, ALLOC0, size, nil)
-  )
+  if size < maxBufferSize:
+    result = cast[Buffer](
+      allocator(nil, ALLOC0, baseBufferSize + size, nil)
+    )
+    result.exitCode = exitCode
+    result.size = baseBufferSize + size
+  else:
+    result = cast[Buffer](
+      allocator(nil, ALLOC0, baseBufferSize, nil)
+    )
+    result.exitCode = BufferOverflown
+    result.size = baseBufferSize
 
 proc destroyBuffer*(
   allocator: Allocator,
