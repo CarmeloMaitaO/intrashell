@@ -1,68 +1,84 @@
 # IntraShell Binary Format (ISBF) especification V1.0.0
 
 ## 0. Conformance
-    MUST / SHOULD / MAY language. What a conformant reader and a
-    conformant writer each guarantee. Compatibility promise: v1
-    readers accept any valid v1 document.
+ISBF readers and writers should accept previous versions of the specification,
+but should reject future revisions of the supported versions of the
+specification to prevent data corruption.
 
 ## 1. Overview
-    The ISBF is a pseudo-schemaless binary framing format for serialization and
-    message passing, which means that it can be used to describe application
-    formats, network protocols, intra-process communication protocols
-    (message-passing based).
+The ISBF is a binary framing format for serialization and message passing, which
+means that it can be used to describe application formats, network protocols and
+intra-process communication protocols (message-passing based).
 
-    It counts with the capacity to work in both, an schemaful manner, and a
-    pseudo-schemaless mode, based on whether the schema definitions are
-    embedded within the file/packet or shared before parsing.
+It counts with the capacity to work in full and partial schemaless and schemaful
+modes based on wether there are user-defined schemas and a registry within the
+file/packet.
 
 ## 2. Terminology
-    Field, Field ID, Value, Object, Schema, Registry, Document,
-    Header, Data Layer, Variant Group, LAYOUT block.
+Field, Field ID, Value, Object, Schema, Registry, Document,
+Header, Data Layer, Variant Group, LAYOUT block.
   
 ## 3. Endianness
-    Little-endian, unconditionally.
+Little-endian, unconditionally.
 
 ## 4. Main binary structure
-    |    **Section**    | Header |   Data   |
-    | ----------------- | ------ | -------- |
-    | **Size in bytes** |    8   | variable |
+|    **Section**    | Header |   Data   |
+| ----------------- | ------ | -------- |
+| **Size in bytes** |    8   | variable |
 
-    The general structure of an ISBF file/packet is divided in:
-    1. Header: contains the magic bytes, plus the ISBF version and type.
-    3. Data: contains the actual data and, optionally, at the start, any of the
-       following in their respective order:
-       1. A cyclic redundancy check (CRC).
-       2. A registry of the user-defined schemas.
-       3. A layout of the data within the file/packet.
+The general structure of an ISBF file/packet is divided in:
+1. Header: contains the magic bytes, plus the ISBF version and type.
+3. Data: contains the actual data and, optionally, at the start, any of the
+   following in their respective order:
+   1. A cyclic redundancy check (CRC).
+   2. A registry of the user-defined schemas.
+   3. A layout of the data within the file/packet.
 
 ### Header section
-    |     **Field**     | Magic bytes | Version |  Flags | Type |
-    | ----------------- | ----------- | ------- | ------ | ---- |
-    | **Size in bytes** |      4      |    2    |    1   |   1  |
+|     **Field**     | Magic bytes | Version |  Flags | Type |
+| ----------------- | ----------- | ------- | ------ | ---- |
+| **Size in bytes** |      4      |    2    |    1   |   1  |
 
-    The header section contains the necessary information for the parser to
-    identify the format, the version of the specification its following and
-    whether it contains custom schemas or not. This information is stored in the
-    following fields:
+The header section contains the necessary information for the parser to
+identify the format, the version of the specification its following and
+whether it contains custom schemas or not. This information is stored in the
+following fields:
 
-    1. Magic bytes: an array of 4 characters which value is
-       `['I', 'S', 'B', 'F']`. It doubles as a way to check the endianness, as
-       casting these bytes to an `uint32` should yield the value of
-       `1178751817`.
-    2. Version: an array of 2 bytes with the version and revision of the
-       ISBF specification that the file/packet follows. The first index is the
-       version, while the second is the revision. This docunents defines the
-       `[1, 0]` version of the ISBF specification.
-    3. Flags: a bitset of the ISBF flags that the file/packet has. The possible
-       values within this specification of the ISBF are:
-       1. Contains a cyclic redundacy check at the start of the data.
-       2. Contains user-defined schemas.
-       3. Contains a registry for the user-defined schemas.
-       4. Contains a layout section at the start of the data.
-    4. Type: an enumeration for the type of data contained:
-       0. Schemaless (default): no registry nor user-defined schemas
-       1. Pseudo-schemaful: contains a registry and user-defined schemas.
-       2. Schemaful: contains user-defined schemas, but no registry.
+1. Magic bytes: an array of 4 characters which value is
+   `['I', 'S', 'B', 'F']`. It doubles as a way to check the endianness, as
+   casting these bytes to an `uint32` should yield the value of
+   `1178751817`.
+2. Version: an array of 2 bytes with the version and revision of the
+   ISBF specification that the file/packet follows. The first index is the
+   version, while the second is the revision. This docunents defines the
+   `[1, 0]` version of the ISBF specification.
+3. Flags: a bitset of the ISBF flags that the file/packet has. The possible
+   values within this specification of the ISBF are:
+   1. Contains a cyclic redundacy check at the start of the data.
+   2. Contains a layout section at the start of the data.
+4. Type: an enumeration for the type of data contained:
+
+   | **Number** | **Type/Contains** | Registry | User-defined schemas |
+   | ---------- | ----------------- | -------- | -------------------- |
+   |     0      |     Schemaless    |    No    |          No          |
+   |     1      | Partial-schemaless|    Yes   |          No          |
+   |     2      | Partial-schemaful |    Yes   |          Yes         |
+   |     3      |      Schemaful    |    No    |          Yes         |
+  
+   0. Schemaless (default): no registry nor user-defined schemas. Should be used
+      for simple serialization.
+   1. Partial-schemaless: have a registry but no user-defined schemas; this is to
+      simply declare ordering, length and constraints of the transmitted data.
+      It accepts schemaless inputs for parsing, as in this scenario, the
+      registry acts as a self-contained way of performing input-sanitization.
+   1. Partial-schemaful: contains a registry and user-defined schemas; This
+      should always be used for file/application formats, as it facilitates the
+      inspection of the data without a dedicated parser.
+   2. Schemaful: contains user-defined schemas, but no registry. This should
+      always be used for network protocols and intra-process communication, as
+      it significantly reduces the amount of bytes wasted for every sent
+      package. To parse the data, the registry should be pre-shared. This type
+      is enforced for Intrashell modules.
 
 ### Data section
     |     **Field**     | CRC | Registry |  Layout  |   Data   |
@@ -134,60 +150,3 @@
     | ----------------- | --- | -------- | --------- | -------- |
     | **Size in bytes** |  2  |    40    |     2     |     2    |
 
-## 6. VariantDefinitions (Schema Dictionary)
-    Binary representation of a schema. Built with procs (see §12).
-    OPEN: the exact wire layout for a schema. Fields: field ID,
-    primitive type, length constraint (fixed/variable), optional
-    nested schema reference.
-    OPEN: how a schema is identified (§Schema Identity above).
-
-## 7. Field IDs and Scoping
-    OPEN: module-scoped or global. Consequences either way.
-
-## 8. Objects
-    A sequence of field-ID pairs. Terminates on a reserved
-    end-of-object field ID (OPEN: the exact value, likely 0).
-    OPEN: whether objects are length-prefixed or terminated.
-
-## 9. Variant Groups
-    A field whose value is [variant_id: u16][object bytes].
-    variant_id selects a schema from the enclosing registry.
-    Semantics analogous to Protobuf oneof.
-
-## 10. Data Layer
-    The raw stream. Pseudo-schemaless: sequential [field_id][value]
-    pairs. Values are raw bytes; STRING/BLOB carry a length prefix.
-    OPEN: length prefix width (u32? u64? varint?).
-
-## 11. Pseudo-Schemaless Mode
-    The primary mode. Every field carries its ID on the wire.
-    No external schema required to walk, only to interpret.
-
-## 12. Indexed Mode (LAYOUT)
-    RESERVED FOR V2. A LAYOUT object at the head of Data gives
-    field offsets. Spec v1 defines the reserved field ID and
-    leaves the format unspecified.
-
-## 13. Length Constraints
-    Fixed-length fields omit the length prefix. Variable-length
-    fields carry one. Constraints live in the schema, not the wire.
-
-## 14. Canonicalization
-    OPEN: byte-equality rules. Recommend "semantic equality only."
-
-## 15. Versioning
-    Spec version in FormatHeader. Schema versioning is a
-    registry-level concern (see §7).
-
-## 16. Error Model
-    Reader errors: malformed header, unknown field ID, length
-    overflow, schema not found, type mismatch. Each maps to an
-    ExitCode. Reuse the Intrashell ExitCodes enum where possible.
-
-## 17. Security Considerations
-    Bounded recursion (finite document), no pointer values on the
-    wire, length prefixes must be validated against remaining bytes.
-
-## Appendix A: Primitive Type Table
-## Appendix B: Reserved Field IDs and Schema IDs
-## Appendix C: Conformance Test Vectors (byte-exact)
