@@ -1,11 +1,13 @@
 # IntraShell Binary Format (ISBF) especification V1.0.0
 
 ## 0. Conformance
+
 ISBF readers and writers should accept previous versions of the specification,
 but should reject future revisions of the supported versions of the
 specification to prevent data corruption.
 
 ## 1. Overview
+
 The ISBF is a binary framing format for serialization and message passing, which
 means that it can be used to describe application formats, network protocols and
 intra-process communication protocols (message-passing based).
@@ -15,19 +17,26 @@ modes based on wether there are user-defined schemas and a registry within the
 file/packet.
 
 ## 2. Terminology
-Field, Field ID, Value, Object, Schema, Registry, Document,
-Header, Data Layer, Variant Group, LAYOUT block.
+
+- Section: a group of bytes within a given memory space.
+- Header: the first section of an ISBF file/package. It contains the
+information for the parser to know that is an ISBF and how it should interpret
+the rest of the data and its layout.
+- Data: a collection of sections that forms a heterogeneous container for
+the contained structural, numeric and textual information.
   
 ## 3. Endianness
+
 Little-endian, unconditionally.
 
 ## 4. Main binary structure
+
 |    **Section**    | Header |   Data   |
 | ----------------- | ------ | -------- |
 | **Size in bytes** |    8   | variable |
 
 The general structure of an ISBF file/packet is divided in:
-1. Header: contains the magic bytes, plus the ISBF version and type.
+1. Header: contains the magic bytes, plus the ISBF version, flags and type.
 3. Data: contains the actual data and, optionally, at the start, any of the
    following in their respective order:
    1. A cyclic redundancy check (CRC).
@@ -35,6 +44,7 @@ The general structure of an ISBF file/packet is divided in:
    3. A layout of the data within the file/packet.
 
 ### Header section
+
 |     **Field**     | Magic bytes | Version |  Flags | Type |
 | ----------------- | ----------- | ------- | ------ | ---- |
 | **Size in bytes** |      4      |    2    |    1   |   1  |
@@ -78,75 +88,80 @@ following fields:
       always be used for network protocols and intra-process communication, as
       it significantly reduces the amount of bytes wasted for every sent
       package. To parse the data, the registry should be pre-shared. This type
-      is enforced for Intrashell modules.
+      is enforced for Intrashell modules. **The magic bytes and version of the
+      registry are still embedded within the file/package in its place.**
 
 ### Data section
-    |     **Field**     | CRC | Registry |  Layout  |   Data   |
-    | ----------------- | --- | -------- | -------- | -------- |
-    | **Size in bytes** |  4  | variable | variable | variable |
 
-    The data section contains the information being transmitted, and, depending
-    on the flags declared in the header, metadata of said information. That
-    said, the data and the metadata always follows the ordering shown in the
-    table, even when some or all metadata sections are missing, in which case
-    the aforementioned section will be interpreted to have a size of `0` bytes,
-    and be skipped while parsing.
+|     **Field**     | CRC | Registry |  Layout  |   Data   |
+| ----------------- | --- | -------- | -------- | -------- |
+| **Size in bytes** |  4  | variable | variable | variable |
 
-    Regarding the contents of the data and its metadata, and how shall they be
-    parsed; it is intended for every single section and its fields to be
-    interpreted the exact same way as the contents of the data would: a `uint16`
-    ID is read, and its following fields are known based on it, to then continue
-    to read the next ID; the only exception to this rule is the CRC section,
-    for it always is an `uint32` field.
+The data section contains the information being transmitted, and, depending
+on the flags declared in the header, metadata of said information. That
+said, the data and the metadata always follows the ordering shown in the
+table, even when some or all metadata sections are missing, in which case
+the aforementioned section will be interpreted to have a size of `0` bytes,
+and be skipped while parsing.
 
-    Also, every single field should be composed of an array of `uint16` values,
-    or padded in a way that wouldn't cause a misalignment in the file/packet
-    structure, as every ID and its following fields should be in a position that
-    is a multiple of `2` bytes or `16` bits.
+Regarding the contents of the data and its metadata, and how shall they be
+parsed; it is intended for every single section and its fields to be
+interpreted the exact same way as the contents of the data would: a `uint16`
+ID is read, and its following fields are known based on it, to then continue
+to read the next ID; the only exception to this rule is the CRC section,
+for it always is an `uint32` field.
+
+Also, every single field should be composed of an array of `uint16` values,
+or padded in a way that wouldn't cause a misalignment in the file/packet
+structure, as every ID and its following fields should be in a position that
+is a multiple of `2` bytes or `16` bits.
 
 ## 5. Base types/IDs
-    The first `255` ID values are reserved for the base types/IDs of this
-    specification and future ones, with the ones being defined in this
-    document being:
 
-    0. Registry
-    1. Schema definition
-    2. Variant group definition
-    3. Layout
-    4. BLOB
-    5. String
-    6. Array
-    7. Bool
-    8. Int8
-    9. Uint8
-    10. Int16
-    11. Uint16
-    12. Int32
-    13. Uint32
-    14. Float32
-    15. Int64
-    16. Uint64
-    17. Float64
+The first `255` ID values are reserved for the base types/IDs of this
+specification and future ones, with the ones being defined in this
+document being:
+
+0. Registry
+1. Schema definition
+2. Variant group definition
+3. Layout
+4. BLOB
+5. String
+6. Array
+7. Bool
+8. Int8
+9. Uint8
+10. Int16
+11. Uint16
+12. Int32
+13. Uint32
+14. Float32
+15. Int64
+16. Uint64
+17. Float64
 
 ### Registry type (ID: 0)
-    |     **Field**     | ID  |   Name   | Version | Elements |
-    | ----------------- | --- | -------- | ------- | -------- |
-    | **Size in bytes** |  2  |    40    |    2    |     2    |
 
-    Indicates the presence and start of a registry section within the data. Its
-    fields are:
+|     **Field**     | ID  |   Name   | Magic bytes | Version | Elements |
+| ----------------- | --- | -------- | ----------- | ------- | -------- |
+| **Size in bytes** |  2  |    40    |      8      |    2    |     2    |
 
-    1. Name: the name of the registry. This field is used to
-       identificate the user's application format/protocol/buffer
-    2. Version: the version of the user's application format/protocol/buffer.
-       It is an array of 2 bytes with the version and revision of the format.
-    3. Elements: the number of elements contained within the registry. After
-       processing all of them, the registry should be cinsidered finished, and
-       any new definitions should make the parser exit and notify that the file
-       is corrupted.
+Indicates the presence and start of a registry section within the data. Its
+fields are:
+
+1. Name: the name of the registry. This field is used to
+   identificate the user's application format/protocol/buffer
+2. Version: the version of the user's application format/protocol/buffer.
+   It is an array of 2 bytes with the version and revision of the format.
+3. Elements: the number of elements contained within the registry. After
+   processing all of them, the registry should be cinsidered finished, and
+   any new definitions should make the parser exit and notify that the file
+   is corrupted.
 
 ### Schema definition type (ID: 1)
-    |     **Field**     | ID  |   Name   | Schema ID | Elements |
-    | ----------------- | --- | -------- | --------- | -------- |
-    | **Size in bytes** |  2  |    40    |     2     |     2    |
+
+|     **Field**     | ID  |   Name   | Schema ID | Elements |
+| ----------------- | --- | -------- | --------- | -------- |
+| **Size in bytes** |  2  |    40    |     2     |     2    |
 
