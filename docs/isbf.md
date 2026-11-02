@@ -1,4 +1,4 @@
-# IntraShell Binary Format (ISBF) especification V1.0.0
+# IntraShell Binary Format (ISBF) especification V1.0
 
 ## 0. Conformance
 
@@ -8,160 +8,132 @@ specification to prevent data corruption.
 
 ## 1. Overview
 
-The ISBF is a binary framing format for serialization and message passing, which
-means that it can be used to describe application formats, network protocols and
-intra-process communication protocols (message-passing based).
+ISBF is a pseudo-schemaful binary framing format capable of operating in both
+schemaless and schemaful modes, depending on when the schema description is
+shared: before or alongside the message payload itself.
 
-It counts with the capacity to work in full and partial schemaless and schemaful
-modes based on wether there are user-defined schemas and a registry within the
-file/packet.
+In this way, ISBF serves not only as a data serialization format, but also
+as a foundation for building application file formats, network protocols, and
+inter-/intra-process communication protocols based on message-passing.
 
 ## 2. Terminology
 
 - Section: a group of bytes within a given memory space.
-- Header: the first section of an ISBF file/package. It contains the
-information for the parser to know that is an ISBF and how it should interpret
-the rest of the data and its layout.
-- Data: a collection of sections that forms a heterogeneous container for
-the contained structural, numeric and textual information.
+- Message: a single ISBF packet/file and root container for the header, data,
+and optionally, description sections.
+- Schema: the shape and constraints of a message, section or object.
+- Header: the first section of an ISBF messsage. It contains the information for
+the parser to know that is an ISBF and how it should interpret the rest of the
+data and its layout.
+- Description: the second section of an ISBF message, that may be included
+in the message in schemaless mode, while left out in schemaful mode, that
+encapsulates the different shapes of the messages, the objects they may contain,
+and the schema that, together, they form. It can also put constraints on the
+metadata section.
+- Metadata: the third section of an ISBF message. Provides additional
+information related to the integrity, layout, encription and compression of the
+ISBF message.
+- Data: the fourth section of an ISBF message, that contains combinations of
+objects, constrained by the definitions of the description.
+- Object: an heterogeneous, ordered container of different fields.
+- Field: a single data element of a determinate type.
+- Magic bytes: a set of either four or eight bytes that identify the
+message's format.
+- ID: a 16-bit number that identifies a section, object or field.
   
 ## 3. Endianness
 
-Little-endian, unconditionally.
+Little-endian, unconditionally. This applies to:
 
-## 4. Main binary structure
+- Magic bytes
+- IDs
+- Numbers
+- Bitfields
 
-|    **Section**    | Header |   Data   |
-| ----------------- | ------ | -------- |
-| **Size in bytes** |    8   | variable |
+## 4. Basic data structure
 
-The general structure of an ISBF file/packet is divided in:
-1. Header: contains the magic bytes, plus the ISBF version, flags and type.
-3. Data: contains the actual data and, optionally, at the start, any of the
-   following in their respective order:
-   1. A cyclic redundancy check (CRC).
-   2. A registry of the user-defined schemas.
-   3. A layout of the data within the file/packet.
+Every single field is contained within a 16bits wrapper, as to keep the
+structure aligned and the padding implicit. To wrap them, the following formula
+is used: `u16Pairs = (fieldSize div 2) + (fieldSize mod 2)`.
+
+## 5. Main binary structure
+
+|    **Section**    | Header | Description | Metadata |   Data   |
+| ----------------- | ------ | ----------- | -------- | -------- |
+| **Size in bytes** |   16   |   variable  | variable | variable |
+
+The general structure of an ISBF message is divided in:
+1. Header: contains the magic bytes and version for both the ISBF and the
+description.
+2. Description: contains the definitions for objects, their ordering within a
+message and the constraints that their fields are subjected to. It also provides
+constraints for the metadata section of the ISBF message.
+3. Metadata: optional, and may contain the layout and CRC check for the data,
+along with any information about the encryption and compression of said data.
+4. Data: contains the actual data.
 
 ### Header section
 
-|     **Field**     | Magic bytes | Version |  Flags | Type |
-| ----------------- | ----------- | ------- | ------ | ---- |
-| **Size in bytes** |      4      |    2    |    1   |   1  |
+|     **Field**     | Magic bytes | Version |  Schema's MB | Schema's version |
+| ----------------- | ----------- | ------- | ------------ | ---------------- |
+| **Size in bytes** |      4      |    2    |        8     |         2        |
 
-The header section contains the necessary information for the parser to
-identify the format, the version of the specification its following and
-whether it contains custom schemas or not. This information is stored in the
-following fields:
+The header section contains the necessary information for the parser to identify
+the format and the version of the specification its following. This information
+is stored in the following fields:
 
 1. Magic bytes: an array of 4 characters which value is
    `['I', 'S', 'B', 'F']`. It doubles as a way to check the endianness, as
    casting these bytes to an `uint32` should yield the value of
-   `1178751817`.
-2. Version: an array of 2 bytes with the version and revision of the
-   ISBF specification that the file/packet follows. The first index is the
-   version, while the second is the revision. This docunents defines the
-   `[1, 0]` version of the ISBF specification.
-3. Flags: a bitset of the ISBF flags that the file/packet has. The possible
-   values within this specification of the ISBF are:
-   1. Contains a cyclic redundacy check at the start of the data.
-   2. Contains a layout section at the start of the data.
-4. Type: an enumeration for the type of data contained:
-
-   | **Number** | **Type/Contains** | Registry | User-defined schemas |
-   | ---------- | ----------------- | -------- | -------------------- |
-   |     0      |     Schemaless    |    No    |          No          |
-   |     1      | Partial-schemaless|    Yes   |          No          |
-   |     2      | Partial-schemaful |    Yes   |          Yes         |
-   |     3      |      Schemaful    |    No    |          Yes         |
-  
-   0. Schemaless (default): no registry nor user-defined schemas. Should be used
-      for simple serialization.
-   1. Partial-schemaless: have a registry but no user-defined schemas; this is to
-      simply declare ordering, length and constraints of the transmitted data.
-      It accepts schemaless inputs for parsing, as in this scenario, the
-      registry acts as a self-contained way of performing input-sanitization.
-   1. Partial-schemaful: contains a registry and user-defined schemas; This
-      should always be used for file/application formats, as it facilitates the
-      inspection of the data without a dedicated parser.
-   2. Schemaful: contains user-defined schemas, but no registry. This should
-      always be used for network protocols and intra-process communication, as
-      it significantly reduces the amount of bytes wasted for every sent
-      package. To parse the data, the registry should be pre-shared. This type
-      is enforced for Intrashell modules. **The magic bytes and version of the
-      registry are still embedded within the file/package in its place.**
+   `1178751817` on a little endian architecture, and `1230193222` on a big
+   endian one. The little endian one is the enforced.
+2. Version: an `uint16` with the major version of the ISBF specification that
+   the file/packet follows. This docunents defines the `1` version of the ISBF
+   specification.
+3. Schema's magic bytes: The magic bytes of the schema defined in the
+   description section. These are auto-generated from the schema name set in the
+   description, by hashing it with SHA-256 and taking the first 8 bytes.
+4. Schema's version: an `uint16` that defines the major version of the schema
+   defined by the description section.
 
 ### Data section
 
-|     **Field**     | CRC | Registry |  Layout  |   Data   |
-| ----------------- | --- | -------- | -------- | -------- |
-| **Size in bytes** |  4  | variable | variable | variable |
+|     **Field**     |   Data   |
+| ----------------- | -------- |
+| **Size in bytes** | variable |
 
-The data section contains the information being transmitted, and, depending
-on the flags declared in the header, metadata of said information. That
-said, the data and the metadata always follows the ordering shown in the
-table, even when some or all metadata sections are missing, in which case
-the aforementioned section will be interpreted to have a size of `0` bytes,
-and be skipped while parsing.
+The data section contains the information being transmitted.
 
-Regarding the contents of the data and its metadata, and how shall they be
+Regarding the contents of the data, and how shall it be
 parsed; it is intended for every single section and its fields to be
 interpreted the exact same way as the contents of the data would: a `uint16`
 ID is read, and its following fields are known based on it, to then continue
-to read the next ID; the only exception to this rule is the CRC section,
-for it always is an `uint32` field.
+to read the next ID.
 
-Also, every single field should be composed of an array of `uint16` values,
-or padded in a way that wouldn't cause a misalignment in the file/packet
-structure, as every ID and its following fields should be in a position that
-is a multiple of `2` bytes or `16` bits.
+## 6. Reserved schema for description/schema sharing
 
-## 5. Base types/IDs
+To share the description of an schema before sharing data, one uses `0` as the
+magic bytes of the schema inside the header, followed by the description. This
+way, it is know that the ISBF message is just the description of another schema,
+and that there is no data to read.
 
-The first `255` ID values are reserved for the base types/IDs of this
+## 7. Base types/IDs
+
+The first `255` ID values are reserved for the base types/sections/IDs of this
 specification and future ones, with the ones being defined in this
 document being:
 
-0. Registry
-1. Schema definition
-2. Variant group definition
-3. Layout
-4. BLOB
-5. String
-6. Array
-7. Bool
-8. Int8
-9. Uint8
-10. Int16
-11. Uint16
-12. Int32
-13. Uint32
-14. Float32
-15. Int64
-16. Uint64
-17. Float64
-
-### Registry type (ID: 0)
-
-|     **Field**     | ID  |   Name   | Magic bytes | Version | Elements |
-| ----------------- | --- | -------- | ----------- | ------- | -------- |
-| **Size in bytes** |  2  |    40    |      8      |    2    |     2    |
-
-Indicates the presence and start of a registry section within the data. Its
-fields are:
-
-1. Name: the name of the registry. This field is used to
-   identificate the user's application format/protocol/buffer
-2. Version: the version of the user's application format/protocol/buffer.
-   It is an array of 2 bytes with the version and revision of the format.
-3. Elements: the number of elements contained within the registry. After
-   processing all of them, the registry should be cinsidered finished, and
-   any new definitions should make the parser exit and notify that the file
-   is corrupted.
-
-### Schema definition type (ID: 1)
-
-|     **Field**     | ID  |   Name   | Schema ID | Elements |
-| ----------------- | --- | -------- | --------- | -------- |
-| **Size in bytes** |  2  |    40    |     2     |     2    |
-
+0. Padding/Skip
+1. Description
+2. BitField definition
+3. Object definition
+4. Object variant definition
+5. Message definition
+6. Metadata
+7. Layout
+8. Array
+9. BLOB
+10. String
+11. Natural
+12. Integer
+13. Rational

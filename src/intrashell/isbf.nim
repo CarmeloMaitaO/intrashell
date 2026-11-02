@@ -9,11 +9,15 @@
 type
   FormatHeader* = tuple
     magicBytes: uint32
-  BaseDataTypes* {.size: S8.} = enum
+    versionAndType: array[4, byte]
+  BaseDataTypes* {.size: S16.} = enum
     ##[
       It is meant to tell what kind of data is contained within it so it can be
       properly extracted and parsed.
     ]##
+    registry
+    object
+    objectgroup
     BOOL     =  0,
     UINT8    =  1,
     UINT16   =  2,
