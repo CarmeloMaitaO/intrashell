@@ -1,0 +1,23 @@
+standard: {
+  label: "IntraShell Compatibility Layer\n(ISCP)"
+  intrashell: {
+    label: "Intrashell\n(interface)"
+  }
+  api: {
+    label: "OS API\n(system calls)"
+  }
+}
+
+format: {
+  label: "Binary format\n(ISBF)"
+}
+
+language: {
+  label: "Language (any)"
+}
+
+language -> format: "Understands"
+standard.intrashell -> format: "Uses for message passing"
+language -> standard.intrashell: "Makes calls to"
+standard.intrashell -> standard.api: "relays messages"
+

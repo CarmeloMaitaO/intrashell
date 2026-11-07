@@ -9,8 +9,8 @@ specification to prevent data corruption.
 ## 1. Overview
 
 ISBF is a pseudo-schemaful binary framing format capable of operating in both
-schemaless and schemaful modes, depending on when the schema description is
-shared: before or alongside the message payload itself.
+schemaless and schemaful modes, depending on whether the there's a declared
+schema being used or not.
 
 In this way, ISBF serves not only as a data serialization format, but also
 as a foundation for building application file formats, network protocols, and
@@ -25,15 +25,13 @@ and optionally, description sections.
 - Header: the first section of an ISBF messsage. It contains the information for
 the parser to know that is an ISBF and how it should interpret the rest of the
 data and its layout.
-- Description: the second section of an ISBF message, that may be included
-in the message in schemaless mode, while left out in schemaful mode, that
-encapsulates the different shapes of the messages, the objects they may contain,
-and the schema that, together, they form. It can also put constraints on the
+- Description: the schema of an ISBF message, that encapsulates the different
+shapes of the messages, the objects they may contain, and the constraints on the
 metadata section.
-- Metadata: the third section of an ISBF message. Provides additional
+- Metadata: the second section of an ISBF message. Provides additional
 information related to the integrity, layout, encription and compression of the
 ISBF message.
-- Data: the fourth section of an ISBF message, that contains combinations of
+- Data: the third section of an ISBF message, that contains combinations of
 objects, constrained by the definitions of the description.
 - Object: an heterogeneous, ordered container of different fields.
 - Field: a single data element of a determinate type.
@@ -49,6 +47,7 @@ Little-endian, unconditionally. This applies to:
 - IDs
 - Numbers
 - Bitfields
+- Booleans
 
 ## 4. Basic data structure
 
@@ -58,19 +57,17 @@ is used: `u16Pairs = (fieldSize div 2) + (fieldSize mod 2)`.
 
 ## 5. Main binary structure
 
-|    **Section**    | Header | Description | Metadata |   Data   |
-| ----------------- | ------ | ----------- | -------- | -------- |
-| **Size in bytes** |   16   |   variable  | variable | variable |
+|    **Section**    | Header | Metadata |   Data   |
+| ----------------- | ------ | -------- | -------- |
+| **Size in bytes** |   16   | variable | variable |
 
 The general structure of an ISBF message is divided in:
 1. Header: contains the magic bytes and version for both the ISBF and the
 description.
-2. Description: contains the definitions for objects, their ordering within a
-message and the constraints that their fields are subjected to. It also provides
-constraints for the metadata section of the ISBF message.
-3. Metadata: optional, and may contain the layout and CRC check for the data,
-along with any information about the encryption and compression of said data.
-4. Data: contains the actual data.
+2. Metadata: optional, and may contain the layout and an integrity check for
+the data, along with any information about the encryption and compression of
+said data.
+3. Data: contains the actual data.
 
 ### Header section
 
@@ -110,30 +107,30 @@ interpreted the exact same way as the contents of the data would: a `uint16`
 ID is read, and its following fields are known based on it, to then continue
 to read the next ID.
 
-## 6. Reserved schema for description/schema sharing
-
-To share the description of an schema before sharing data, one uses `0` as the
-magic bytes of the schema inside the header, followed by the description. This
-way, it is know that the ISBF message is just the description of another schema,
-and that there is no data to read.
-
-## 7. Base types/IDs
+## 6. Base types/IDs
 
 The first `255` ID values are reserved for the base types/sections/IDs of this
 specification and future ones, with the ones being defined in this
 document being:
 
-0. Padding/Skip
-1. Description
-2. BitField definition
-3. Object definition
-4. Object variant definition
-5. Message definition
-6. Metadata
-7. Layout
-8. Array
-9. BLOB
-10. String
-11. Natural
-12. Integer
-13. Rational
+0. (0x0) Padding/Skip
+6. (0x1) Metadata
+8. (0x3) Array
+9. (0x9) BLOB
+10. (0xA) String
+11. (0xB) Natural
+12. (0xC) Integer
+13. (0xD) Rational
+14. (0xE) Boolean
+
+## 7. Reserved schema for description/schema sharing
+
+To share the description of an schema before sharing data, one uses and
+additional message with the schema ID `0`, followed by the description inside
+the data section. This is 
+
+1. (0x1) Description
+2. (0x2) BitField definition
+3. (0x3) Object definition
+4. (0x4) Object variant definition
+5. (0x5) Message definition

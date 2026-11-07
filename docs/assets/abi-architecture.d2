@@ -1,0 +1,20 @@
+language: {
+  label: "Language (C)"
+}
+format: {
+  label: "Binary format\n(types & structs)"
+}
+posix: {
+  label: "(POSIX)"
+  api: {
+    label: "OS API\n(system calls)"
+  }
+  std: {
+    label: "Language's STD Lib\n(LibC)"
+  }
+}
+
+language -> posix.std: "contains"
+posix.std -> posix.api: "wraps"
+posix.api -> format: "passes data as"
+language -> format: "defines structures/tuples as"
