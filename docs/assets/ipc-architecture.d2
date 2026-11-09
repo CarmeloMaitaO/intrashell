@@ -36,22 +36,35 @@ standard: {
     isps: {
       label: "IntraShell Page Store"
       class: future
+      tooltip: "Replicates the block allocation model of SQLite pages, Ext4 extents, and Nim's heap chunks. It uses a `device + schema` API, where you select the device, an array of blocks is created inside it, and then query for internal schemas. It can be used for raw drives, files and in-memory stores as a filesystem and database. Inside the ISMK it is a server, which also handles drivers related to storage drives and filesystems; the drivers can be embedded inside the binary, shipped as a dynamic library that will be loaded as an ISCL module, or executed as an additional program that will communicate with using the OS IPC."
     }
-    isfbs: {
-      label: "IntraShell FrameBuffer Server"
+    isds: {
+      label: "IntraShell Display Server"
       class: future
+      tooltip: "Uses a `Display -> Window` API, in which a single display can contain multiple windows, and said windows can act as displays for inner windows. It also handles audio and HID input for every window. Inside the ISMK it is a server, which also handles drivers related to HID, displays and audio devices; the drivers can be embedded inside the binary, shipped as a dynamic library that will be loaded as an ISCL module, or executed as an additional program that will communicate with using the OS IPC."
     }
     isns: {
       label: "IntraShell Network Server"
       class: future
+      tooltip: "Uses a `Device + Protocol + payload` API, where it behaves both as a proxy and a full server: it relays the messages the program sends, while allowing it to poll for requests/messages. Inside the ISMK it is a server, which also handles drivers related to network cards and I2C/SPI/UART/GPIO devices; the drivers can be embedded inside the binary, shipped as a dynamic library that will be loaded as an ISCL module, or executed as an additional program that will communicate with using the OS IPC."
+    }
+    ispm: {
+      label: "IntraShell Process Manager"
+      class: future
+      tooltip: "Provides features for threading, asynchronous processes, executing other programs, time handling and simple memory allocations. Inside the ISMK it is a server, which also handles program creation and service management."
     }
     iscs: {
       label: "IntraShell Cryptography Server"
       class: future
+      tooltip: "Provides a cryptographic and compression suite. Inside the ISMK, it is a server that also provides user authentication services."
     }
+    isps -> iscs: "Uses"
+    isns -> iscs: "Uses"
+    ispm -> iscs: "Uses"
   }
   format: {
     label: "Binary format\n(ISBF)"
+    tooltip: "It is 16bit aligned, and every field is a composition of 16bit limbs that will act as a container for the actual data"
   }
 }
 api: {
@@ -84,17 +97,20 @@ modules: {
 isct: {
   label: "IntraShell Compiler Toolchain\n(ISCT)"
   class: future
+  tooltip: "Uses a Sea-of-Nodes core -> execution-paradigm fork -> VM dialect -> target pipeline, where OS abstraction is provided by embedding the ISCL."
   isir: {
-    label: "IntraShell Intermediate Representation\n(ISIR)\n(SoN->SCF IR)"
+    label: "IntraShell Intermediate Representation\n(ISIR)\n(SoN -> SCF/CFG IR)"
     class: future
+    tooltip: "Execution model independent Sea-of-Nodes IR, which, after optimizations, forks its compilation pipeline depending on the target: CFG for register-based targets and SCF for everything else."
   }
   ispt: {
     label: "ISCT Packaging Tools\n(Generates MSIs, AABs, JARs, etc...)"
     class: future
   }
   ised: {
-    label: "IntraShell Execution Dialects (ISED)\n(execution models bytecode)\n(32bit wide RISC instructions)"
+    label: "IntraShell Execution Dialects (ISED)\n(execution models bytecode)"
     class: future
+    tooltip: "Each ISED dialect represents a different execution model, and is intended to work both as an executable VM and as a template transpilation source for targets, which may be native or other VMs, and may perform an additional peephole optimization as last step."
     stack: {
       label: "ISED-Stack\n(Stack machine)"
       class: future
@@ -102,26 +118,23 @@ isct: {
     register: {
       label: "ISED-Register\n(Register machine)"
       class: future
+      tooltip: "Variable-encoding register VM with 32 5-bit registers and a hidden flags register. The first 4 bits of every instruction select the format; compact formats use an 8-bit header (format + opcode), general formats use a 16-bit header (format + 12-bit opcode). Total instruction length is 2, 4, 6, 8, or 10 bytes."
     }
     vector: {
-      label: "ISED-Vector\n(Vector/Grid machine)"
+      label: "ISED-Vector\n(Vector machine)"
       class: future
+      tooltip: "Kernel model (SPIR-V primary; PTX, Metal, WebGPU via SPIR-V)."
     }
   }
+  isir -> ised.stack: "Generates an SCF and compiles to"
+  isir -> ised.register: "Generates an CFG and compiles to"
+  isir -> ised.vector: "Generates an SCF and compiles to"
   targets: {
     label: "Targets"
     class: future
     stack: {
       label: "Stack machines"
       class: future
-      clr: {
-        label: "CLR"
-        class: future
-      }
-      jvm: {
-        label: "JVM"
-        class: future
-      }
       wasm: {
         label: "WASM"
         class: future
@@ -148,7 +161,7 @@ isct: {
       }
     }
     vector: {
-      label: "Vector/Grid machines"
+      label: "Vector machines"
       class: future
       spir: {
         label: "SPIR-V"
@@ -172,19 +185,15 @@ standard.intrashell -> language.procedures: "Links to the registry"
 standard.intrashell -> modules.dynamic: "Links to the registry"
 standard.intrashell -> modules.vm: "Links to the registry"
 standard.intrashell -> standard.std -> api: "Relays messages"
-standard.std.isps -> standard.std.iscs: "Uses"
-standard.std.isns -> standard.std.iscs: "Uses"
+
 modules.dynamic -> standard.intrashell: "Makes calls to"
 modules.vm -> standard.intrashell: "Makes calls to"
-modules.vm -> isct.ised: "Is"
+modules.vm -> isct.ised: "Executes"
 isct -> standard: "Embeds"
-isct.isir -> standard.format: "Is a dialect of"
-isct.isir -> isct.ised.stack: "Compiles to"
-isct.isir -> isct.ised.register: "Compiles to"
-isct.isir -> isct.ised.vector: "Compiles to"
+isct.isir -> standard.format: "Serializes to"
+
 isct.ised.stack -> isct.targets.stack: "Transpiles to"
 isct.ised.register -> isct.targets.register: "Transpiles to"
 isct.ised.vector -> isct.targets.vector: "Transpiles to"
 ismk -> standard: "Uses as API and IPC"
 ismk -> isct: "Embeds"
-
