@@ -1,23 +1,190 @@
+classes: {
+  independent: {
+    style: {
+      stroke-width: 6
+    }
+  }
+  future: {
+    style: {
+      stroke-dash: 6
+    }
+  }
+}
+vars: {
+  d2-legend: {
+    present: {
+      label: "Present in the current release"
+    }
+    independent: {
+      label: "Independent from Intrashell"
+      class: independent
+    }
+    future: {
+      label: "Planned for a future release"
+      class: future
+    }
+  }
+}
 standard: {
-  label: "IntraShell Compatibility Layer\n(ISCP)"
+  label: "IntraShell Compatibility Layer\n(ISCL)"
   intrashell: {
     label: "Intrashell\n(interface)"
   }
-  api: {
-    label: "OS API\n(system calls)"
+  std: {
+    label: "Intrashell Standard Library"
+    class: future
+    isps: {
+      label: "IntraShell Page Store"
+      class: future
+    }
+    isfbs: {
+      label: "IntraShell FrameBuffer Server"
+      class: future
+    }
+    isns: {
+      label: "IntraShell Network Server"
+      class: future
+    }
+    iscs: {
+      label: "IntraShell Cryptography Server"
+      class: future
+    }
+  }
+  format: {
+    label: "Binary format\n(ISBF)"
   }
 }
-
-format: {
-  label: "Binary format\n(ISBF)"
+api: {
+  label: "OS API/IPC"
+  class: independent
 }
 
 language: {
   label: "Language (any)"
+  class: independent
+  procedures: {
+    label: "Static procedures"
+    class: independent
+  }
 }
 
-language -> format: "Understands"
-standard.intrashell -> format: "Uses for message passing"
+modules: {
+  label: "Modules"
+  dynamic: {
+    label: "Dynamic libraries\n(DLLs, SOs, DYNLIBs)"
+  }
+  vm: {
+    label: "Virtual machines\n(ISED dialects)"
+    style: {
+      stroke-dash: 5
+    }
+  }
+}
+
+isct: {
+  label: "IntraShell Compiler Toolchain\n(ISCT)"
+  class: future
+  isir: {
+    label: "IntraShell Intermediate Representation\n(ISIR)\n(SoN->SCF IR)"
+    class: future
+  }
+  ispt: {
+    label: "ISCT Packaging Tools\n(Generates MSIs, AABs, JARs, etc...)"
+    class: future
+  }
+  ised: {
+    label: "IntraShell Execution Dialects (ISED)\n(execution models bytecode)\n(32bit wide RISC instructions)"
+    class: future
+    stack: {
+      label: "ISED-Stack\n(Stack machine)"
+      class: future
+    }
+    register: {
+      label: "ISED-Register\n(Register machine)"
+      class: future
+    }
+    vector: {
+      label: "ISED-Vector\n(Vector/Grid machine)"
+      class: future
+    }
+  }
+  targets: {
+    label: "Targets"
+    class: future
+    stack: {
+      label: "Stack machines"
+      class: future
+      clr: {
+        label: "CLR"
+        class: future
+      }
+      jvm: {
+        label: "JVM"
+        class: future
+      }
+      wasm: {
+        label: "WASM"
+        class: future
+      }
+    }
+    register: {
+      label: "Register machines"
+      class: future
+      mcu: {
+        label: "MCUs (ESP32, etc...)"
+        class: future
+      }
+      mpu: {
+        label: "MPUs (RZ/FIVE, etc...)"
+        class: future
+      }
+      cpu: {
+        label: "CPUs (RISC-V, ARM, I386)"
+        class: future
+      }
+      dalvik: {
+        label: "Dalvik VM"
+        class: future
+      }
+    }
+    vector: {
+      label: "Vector/Grid machines"
+      class: future
+      spir: {
+        label: "SPIR-V"
+        class: future
+      }
+    }
+  }
+}
+
+ismk: {
+  label: "IntraShell MicroKernel"
+  class: future
+}
+
+language -> standard.format: "Understands"
 language -> standard.intrashell: "Makes calls to"
-standard.intrashell -> standard.api: "relays messages"
+language -> isct.isir: "Compiles to"
+standard.std.isps -> standard.format: "Is based on"
+standard.intrashell -> standard.format: "Uses for message passing"
+standard.intrashell -> language.procedures: "Links to the registry"
+standard.intrashell -> modules.dynamic: "Links to the registry"
+standard.intrashell -> modules.vm: "Links to the registry"
+standard.intrashell -> standard.std -> api: "Relays messages"
+standard.std.isps -> standard.std.iscs: "Uses"
+standard.std.isns -> standard.std.iscs: "Uses"
+modules.dynamic -> standard.intrashell: "Makes calls to"
+modules.vm -> standard.intrashell: "Makes calls to"
+modules.vm -> isct.ised: "Is"
+isct -> standard: "Embeds"
+isct.isir -> standard.format: "Is a dialect of"
+isct.isir -> isct.ised.stack: "Compiles to"
+isct.isir -> isct.ised.register: "Compiles to"
+isct.isir -> isct.ised.vector: "Compiles to"
+isct.ised.stack -> isct.targets.stack: "Transpiles to"
+isct.ised.register -> isct.targets.register: "Transpiles to"
+isct.ised.vector -> isct.targets.vector: "Transpiles to"
+ismk -> standard: "Uses as API and IPC"
+ismk -> isct: "Embeds"
 
