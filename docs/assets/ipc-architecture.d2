@@ -25,38 +25,41 @@ vars: {
     }
   }
 }
+
 standard: {
   label: "IntraShell Compatibility Layer\n(ISCL)"
   intrashell: {
     label: "Intrashell\n(interface)"
+    tooltip: "Single ABI entry point. Clients construct ISBF messages and send them through this interface; they never call standard library components directly. In ISMK mode this is a kernel-internal capability-checked dispatcher; in host mode it is a syscall shim."
   }
   std: {
     label: "Intrashell Standard Library"
     class: future
+    tooltip: "Privileged servers in ISMK mode; user-space services in host mode. Always reached through the Intrashell interface via ISBF messages — never by direct call."
     isps: {
       label: "IntraShell Page Store"
       class: future
-      tooltip: "Replicates the block allocation model of SQLite pages, Ext4 extents, and Nim's heap chunks. It uses a `device + schema` API, where you select the device, an array of blocks is created inside it, and then query for internal schemas. It can be used for raw drives, files and in-memory stores as a filesystem and database. Inside the ISMK it is a server, which also handles drivers related to storage drives and filesystems; the drivers can be embedded inside the binary, shipped as a dynamic library that will be loaded as an ISCL module, or executed as an additional program that will communicate with using the OS IPC."
+      tooltip: "Storage abstraction: device + schema API over a block model (SQLite pages, Ext4 extents, Nim heap chunks). Usable for raw drives, files, and in-memory stores — both as filesystem and database."
     }
     isds: {
       label: "IntraShell Display Server"
       class: future
-      tooltip: "Uses a `Display -> Window` API, in which a single display can contain multiple windows, and said windows can act as displays for inner windows. It also handles audio and HID input for every window. Inside the ISMK it is a server, which also handles drivers related to HID, displays and audio devices; the drivers can be embedded inside the binary, shipped as a dynamic library that will be loaded as an ISCL module, or executed as an additional program that will communicate with using the OS IPC."
+      tooltip: "Display -> Window API with nested inner displays. Handles audio and HID input per window; manages HID, display, and audio drivers."
     }
     isns: {
       label: "IntraShell Network Server"
       class: future
-      tooltip: "Uses a `Device + Protocol + payload` API, where it behaves both as a proxy and a full server: it relays the messages the program sends, while allowing it to poll for requests/messages. Inside the ISMK it is a server, which also handles drivers related to network cards and I2C/SPI/UART/GPIO devices; the drivers can be embedded inside the binary, shipped as a dynamic library that will be loaded as an ISCL module, or executed as an additional program that will communicate with using the OS IPC."
+      tooltip: "Device + Protocol + payload API. Acts as both proxy and server: relays outgoing messages and allows polling for incoming ones. Manages NIC and I2C/SPI/UART/GPIO drivers."
     }
     ispm: {
       label: "IntraShell Process Manager"
       class: future
-      tooltip: "Provides features for threading, asynchronous processes, executing other programs, time handling and simple memory allocations. Inside the ISMK it is a server, which also handles program creation and service management."
+      tooltip: "Threading, async processes, program execution, time handling, and memory allocation. In ISMK mode, also handles program creation and service management."
     }
     iscs: {
       label: "IntraShell Cryptography Server"
       class: future
-      tooltip: "Provides a cryptographic and compression suite. Inside the ISMK, it is a server that also provides user authentication services."
+      tooltip: "Cryptographic and compression suite. In ISMK mode, also provides user authentication."
     }
     isps -> iscs: "Uses"
     isns -> iscs: "Uses"
@@ -64,12 +67,16 @@ standard: {
   }
   format: {
     label: "Binary format\n(ISBF)"
-    tooltip: "It is 16bit aligned, and every field is a composition of 16bit limbs that will act as a container for the actual data"
+    tooltip: "16-bit aligned container. Every field is composed of 16-bit limbs. All three ISED dialects are serialized into ISBF documents; IPC messages are ISBF documents; the Page Store's on-disk format is ISBF."
   }
+  std.isps -> format: "Uses as binary format"
+  intrashell -> format: "Uses for message passing"
 }
+
 api: {
   label: "OS API/IPC"
   class: independent
+  tooltip: "Used only in host deployment. In ISMK deployment, the ISCL servers realize this interface internally; the api node is not used."
 }
 
 language: {
@@ -87,53 +94,63 @@ modules: {
     label: "Dynamic libraries\n(DLLs, SOs, DYNLIBs)"
   }
   vm: {
-    label: "Virtual machines\n(ISED dialects)"
+    label: "Virtual machines\n(ISED reference interpreters)"
     style: {
       stroke-dash: 5
     }
+    tooltip: "Reference interpreters for each ISED dialect. Each dialect is both an executable VM (test oracle + portability floor) and a template transpilation source for its target family."
   }
 }
 
 isct: {
   label: "IntraShell Compiler Toolchain\n(ISCT)"
   class: future
-  tooltip: "Uses a Sea-of-Nodes core -> execution-paradigm fork -> VM dialect -> target pipeline, where OS abstraction is provided by embedding the ISCL."
+  tooltip: "Sea-of-Nodes core -> execution-paradigm fork -> ISED dialect -> 1:N template transpilation to targets. OS abstraction is provided by embedding the ISCL. The 1:N model is a deterministic template expander (Tier 1), with an optional M:1 peephole tier (Tier 2) per target."
+
   isir: {
     label: "IntraShell Intermediate Representation\n(ISIR)\n(SoN -> SCF/CFG IR)"
     class: future
-    tooltip: "Execution model independent Sea-of-Nodes IR, which, after optimizations, forks its compilation pipeline depending on the target: CFG for register-based targets and SCF for everything else."
+    tooltip: "Execution-model-independent Sea-of-Nodes IR. After optimization, the pipeline forks: CFG lowering for ISED-Register; SCF lowering for ISED-Stack and ISED-Grid."
   }
+
   ispt: {
     label: "ISCT Packaging Tools\n(Generates MSIs, AABs, JARs, etc...)"
     class: future
   }
+
   ised: {
-    label: "IntraShell Execution Dialects (ISED)\n(execution models bytecode)"
+    label: "IntraShell Execution Dialects (ISED)\n(16-format taxonomy per dialect)"
     class: future
-    tooltip: "Each ISED dialect represents a different execution model, and is intended to work both as an executable VM and as a template transpilation source for targets, which may be native or other VMs, and may perform an additional peephole optimization as last step."
-    stack: {
-      label: "ISED-Stack\n(Stack machine)"
-      class: future
-    }
+    tooltip: "All three dialects share the same byte-0 scheme: [format:4][opcode_hi:4], followed by [opcode_lo:8] or per-format payload. Every instruction is 16-bit aligned. Each dialect is BOTH an executable VM AND a template transpilation source (1:N) for its target family. Semantic fusion is applied at the ISED level so the backend is a template expander, not a compiler."
+
     register: {
-      label: "ISED-Register\n(Register machine)"
+      label: "ISED-Register\n(Register machine VM)"
       class: future
-      tooltip: "Variable-encoding register VM with 32 5-bit registers and a hidden flags register. The first 4 bits of every instruction select the format; compact formats use an 8-bit header (format + opcode), general formats use a 16-bit header (format + 12-bit opcode). Total instruction length is 2, 4, 6, 8, or 10 bytes."
+      tooltip: "Register VM: 32 5-bit registers (compact) / up to 256 8-bit registers (general), plus a hidden flags register written by CMP and read by BR. Formats: 0x0-0x1 compact (2 bytes); 0x2-0xB general (4-10 bytes); 0xC-0xD reserved; 0xE extensions (SIMD, atomics, crypto, target intrinsics); 0xF system/debug. Instruction lengths: 2, 4, 6, 8, 10 bytes. Semantic fusion (ADD_LT, LOAD_OFFSET, VFMADD, ...) is chosen at ISED level; the transpiler is a 1:N template expander with an optional M:1 peephole tier."
     }
-    vector: {
-      label: "ISED-Vector\n(Vector machine)"
+
+    stack: {
+      label: "ISED-Stack\n(Stack machine VM with locals)"
       class: future
-      tooltip: "Kernel model (SPIR-V primary; PTX, Metal, WebGPU via SPIR-V)."
+      tooltip: "WASM-targeting stack machine with locals, globals, linear memory, and tables. No registers. Formats: 0x0-0x9 compute (2-10 bytes); 0xA compact fused (PROVISIONAL flex slot — may be reassigned to a new format in a future major version, at which point 0xA bytecode transcodes to the replacement); 0xB SIMD; 0xC bulk memory; 0xD reference types; 0xE GC (specified v2, implemented v3); 0xF system/globals header. Semantic fusion (~40 ops, e.g. local.get_add_const) makes ISED-Stack bytecode ~30-40% smaller than equivalent WASM."
+    }
+
+    grid: {
+      label: "ISED-Grid\n(SIMT grid machine VM)"
+      class: future
+      tooltip: "SIMT (scalar per work-item) VM: 8-bit registers (256 per work-item), 6 explicit storage classes (Global, Local, Private, Constant, PushConstant, Image), and a kernel header that declares the execution mode. Formats: 0x0-0xB compute (4-16 bytes); 0xC image/texture (graphics, v2); 0xD tensor/MMA (v2); 0xE ray tracing (reserved v3); 0xF system + kernel header (EntryPoint, ExecutionMode, WorkgroupSize, BuiltinDeclaration). One dialect serves compute kernels, graphics shaders, and tensor operations; the execution mode in the kernel header selects the target framework."
     }
   }
-  isir -> ised.stack: "Generates an SCF and compiles to"
-  isir -> ised.register: "Generates an CFG and compiles to"
-  isir -> ised.vector: "Generates an SCF and compiles to"
+
+  isir -> ised.stack: "SCF lowering"
+  isir -> ised.register: "CFG lowering"
+  isir -> ised.grid: "SCF lowering"
+
   targets: {
     label: "Targets"
     class: future
     stack: {
-      label: "Stack machines"
+      label: "Stack machines\n(WASM-family only)"
       class: future
       wasm: {
         label: "WASM"
@@ -144,15 +161,15 @@ isct: {
       label: "Register machines"
       class: future
       mcu: {
-        label: "MCUs (ESP32, etc...)"
+        label: "MCUs (ESP32, Renesas R9A02G021, RV32E, ...)"
         class: future
       }
       mpu: {
-        label: "MPUs (RZ/FIVE, etc...)"
+        label: "MPUs (RZ/FIVE, ...)"
         class: future
       }
       cpu: {
-        label: "CPUs (RISC-V, ARM, I386)"
+        label: "CPUs (x86-64, ARM64, RISC-V)"
         class: future
       }
       dalvik: {
@@ -160,40 +177,62 @@ isct: {
         class: future
       }
     }
-    vector: {
-      label: "Vector machines"
+    grid: {
+      label: "Grid machines (SIMT)"
       class: future
       spir: {
         label: "SPIR-V"
         class: future
       }
+      ptx: {
+        label: "NVIDIA PTX"
+        class: future
+      }
+      rdna: {
+        label: "AMD RDNA"
+        class: future
+      }
+      cdna: {
+        label: "AMD CDNA"
+        class: future
+      }
+      gcn: {
+        label: "AMD GCN"
+        class: future
+      }
+      xe: {
+        label: "Intel Xe ISA"
+        class: future
+      }
     }
   }
+
+  ised.stack -> targets.stack: "1:N transpiles to"
+  ised.register -> targets.register: "1:N transpiles to"
+  ised.grid -> targets.grid: "1:N transpiles to"
 }
 
 ismk: {
-  label: "IntraShell MicroKernel"
+  label: "IntraShell MicroKernel (ISMK)"
   class: future
+  tooltip: "Deployment container. Configurable via compile-time flags as microkernel (servers as separate processes), unikernel (servers embedded in the kernel binary), or monolithic (mixed). The Intrashell ABI, ISBF wire format, and boot tiers are identical across all three deployments — only the transport mechanism changes."
 }
 
 language -> standard.format: "Understands"
 language -> standard.intrashell: "Makes calls to"
 language -> isct.isir: "Compiles to"
-standard.std.isps -> standard.format: "Is based on"
-standard.intrashell -> standard.format: "Uses for message passing"
+
+standard.intrashell -> standard.std -> api: "Dispatches / Relays"
+
 standard.intrashell -> language.procedures: "Links to the registry"
 standard.intrashell -> modules.dynamic: "Links to the registry"
 standard.intrashell -> modules.vm: "Links to the registry"
-standard.intrashell -> standard.std -> api: "Relays messages"
 
 modules.dynamic -> standard.intrashell: "Makes calls to"
 modules.vm -> standard.intrashell: "Makes calls to"
-modules.vm -> isct.ised: "Executes"
+modules.vm -> isct.ised: "Implements"
 isct -> standard: "Embeds"
 isct.isir -> standard.format: "Serializes to"
 
-isct.ised.stack -> isct.targets.stack: "Transpiles to"
-isct.ised.register -> isct.targets.register: "Transpiles to"
-isct.ised.vector -> isct.targets.vector: "Transpiles to"
 ismk -> standard: "Uses as API and IPC"
 ismk -> isct: "Embeds"
