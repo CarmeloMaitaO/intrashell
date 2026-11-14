@@ -8,16 +8,25 @@ specification to prevent data corruption.
 
 ## 1. Overview
 
-ISBF is a pseudo-schemaful binary framing format capable of operating in both
-schemaless and schemaful modes, depending on whether the there's a declared
-schema being used or not.
+ISBF is a pseudo-schemaful binary framing format, designed to define new binary
+formats and the contracts they are constrained to, in an interface description
+file that is consumed by the main ISBF parser.
+
+This interface description file is written in a predefined ISBF dialect that
+allows to define new objects, their fields, and their constraints, with every
+field being derived from one of the ISBF built-in types, which all are
+aligned to 16 bits and have flexible sizes, as they all behave like containers,
+with the sole exception being numbers (natural, integer, rational), as they
+are arbitrary-length, with their limbs being composed of 16 bits.
 
 In this way, ISBF serves not only as a data serialization format, but also
 as a foundation for building application file formats, network protocols, and
-inter-/intra-process communication protocols based on message-passing.
+inter-/intra-process communication protocols based on zero-copy message-passing,
+while remaining future proof thanks to their abstract types.
 
 ## 2. Terminology
 
+- ISBF dialect: a binary format made with an ISBF interface description file.
 - Section: a group of bytes within a given memory space.
 - Message: a single ISBF packet/file and root container for the header, data,
 and optionally, description sections.
