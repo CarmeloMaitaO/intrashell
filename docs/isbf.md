@@ -55,14 +55,7 @@ Little-endian, unconditionally. This applies to:
 - Bitfields
 - Booleans
 
-## 4. Basic data structure
-
-Every single field is contained within a 16bits wrapper, as to keep the
-structure aligned and the padding implicit. To wrap them, the following formula
-is used: `u16Pairs = (fieldSize div 2) + (fieldSize mod 2)`, which can be read
-as the integer coefficient of half field size, plus its remainder.
-
-## 5. Main binary structure
+## 4. Main binary structure
 
 |    **Section**    | Header | Metadata |   Data   |
 | ----------------- | ------ | -------- | -------- |
@@ -111,6 +104,97 @@ interpreted the exact same way as the contents of the data would: a `uint16`
 ID is read, and its following fields are known based on it, to then continue
 to read the next ID.
 
+## 5. Basic wrapper container
+
+Every single field is contained within wrapper container composed of an array
+of 16 bits (or 2 bytes) limbs, as to keep the structure aligned and the padding
+implicit. To wrap them, the following formula is used: `limbs = (fieldSize
+div 2) + (fieldSize mod 2)`, which can be read as the integer coefficient of
+half field size, plus its remainder. This container also happens to be preceded
+by a limb which contains the ID of the field, with the basic form of every field
+being:
+
+| **Semantic value** | ID |  Value   |
+| ------------------ | -- | -------- |
+| **Size in limbs**  | 1  | variable |
+
+Furthermore, this containers structure can vary depending on the classification
+of the field it's wrapping, and whether a fixed size has been set for it or not,
+with the existing classifications being:
+
+- Atomic fields
+- Container fields
+- Objects
+- Object fields
+
+### Atomic fields
+
+Atomic fields remain almost identical to the basic form, with the sole
+distinction over their structure being whether they are fixed or flexible sized:
+
+- **Fixed sized structure**:
+
+| **Semantic value** | ID |  Value   |
+| ------------------ | -- | -------- |
+| **Size in limbs**  | 1  |  Fixed   |
+
+In this scenario, the size in limbs of the value has already been set, and
+there's no need to add further information to help with it's parsing.
+
+- **Flexible sized structure**:
+
+| **Semantic value** | ID | Size |  Value   |
+| ------------------ | -- | ---- | -------- |
+| **Size in limbs**  | 1  |   1  | variable |
+
+In this case, an additional `Size` section is added to indicate how many limbs
+compose the following value, and is treated as a single 16 bits unsigned
+integer.
+
+> Atomic fields are the only ones that don't need to declare if the last limb
+> is completely used or not.
+
+### Container fields
+
+Container fields stand a single level above atomic fields, as they remain
+largely similar, but forces the use of the `Size` section regardless of whether
+the field is fixed or flexible sized, and treats this section as an arbitrary
+length signed integer, which indicates with it's sign whether the last limb of
+the value is fully used or not; negative if only the first byte is used,
+positive if both bytes are used.
+
+- **Fixed size structure**:
+
+| **Semantic value** | ID |  Size |  Value   |
+| ------------------ | -- | ----- | -------- |
+| **Size in limbs**  | 1  | Fixed |   Fixed  |
+
+In the case of a fixed size container, both the `Size` and the `Value` sections
+are fixed size, but that doesn't mean that the last section is going to be fully
+used, as the container is the one with the fixed size, not the data it contains,
+hence the need for the `Size` section.
+
+- **Flexible size structure**:
+
+| **Semantic value** | ID |    Size   |  Value   |
+| ------------------ | -- | --------- | -------- |
+| **Size in limbs**  | 1  | Arbitrary | variable |
+
+### Array fields
+
+### Objects
+
+### Object fields
+
+Regardless of whether the field has a set size or not, it's structure will
+include an additional ISBF `integer` value that will be added between it's ID
+and the container, which will either indicate:
+
+- The amount of used limbs inside a single fixed size container.
+- The amount of used bytes inside a single flexible size container. In this
+case, the amount of bytes will be used to determinate the amount of limbs to be
+read.
+
 ## 6. Base types/IDs
 
 The first `0xFF` ID values from `0x0` are reserved for the base
@@ -156,11 +240,16 @@ amount of elements within it from the first index.
 ### Binary Large Object (BLOB)
 
 A BLOB is an universal container for binary data that doesn't fall inside any of
-the provided types, and is supposed to be interpreted by an 
+the provided types, doesn't make assumptions over the contained data while
+reading, and doesn't modify said data while writing, not even for endianness.
 
 ### String
 
+A string is an UTF-8 string contained inside the basic wrapper structure.
+
 ### Natural
+
+A natural is an arbitrary-length unsigned integer
 
 ### Integer
 
