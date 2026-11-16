@@ -146,7 +146,7 @@ compose the following value, and is treated as a single 16 bits unsigned
 integer.
 
 > Atomic fields are the only ones that don't need to declare if the last limb
-> is completely used or not.
+is completely used or not.
 
 ### Container fields
 
@@ -192,11 +192,16 @@ regarding the actual amount of limbs that hold the data without knowing the
 stored type first. Also, this section is interpreted as an arbitrary length
 unsigned integer.
 
+It is worth noting that the elements inside an array omit their ID limb, as it
+is known beforehand. This serves as a way to optimize storage/memory space, as
+less limbs are required for identification.
+
+
 - **Fixed size structure**:
 
-| **Semantic value** | ID |  Size |  Value   |
-| ------------------ | -- | ----- | -------- |
-| **Size in limbs**  | 1  | Fixed |   Fixed  |
+| **Semantic value** | ID |  Size |  Elements   |
+| ------------------ | -- | ----- | ----------- |
+| **Size in limbs**  | 1  | Fixed |    Fixed    |
 
 > In this scenario it is only possible to store fixed size types.
 
@@ -206,7 +211,7 @@ the container.
 
 - **Flexible size structure**:
 
-| **Semantic value** | ID |    Size   |  Value   |
+| **Semantic value** | ID |    Size   | Elements |
 | ------------------ | -- | --------- | -------- |
 | **Size in limbs**  | 1  | Arbitrary | variable |
 
@@ -229,7 +234,7 @@ which they are also treated as fixed size atomic types.
 
 - **Fixed size structure**:
 
-| **Semantic value** | ID |  Value   |
+| **Semantic value** | ID |   Limbs  |
 | ------------------ | -- | -------- |
 | **Size in limbs**  | 1  |   Fixed  |
 
@@ -237,37 +242,82 @@ While the core value is fixed size, its bits will be splitted to get the
 contained subfields within it. These subfields shall be defined inside the
 interface description file of the respective ISBF dialect.
 
+> Subfields carry no ID, only their value.
+
 ### Objects
 
-### Object variants
+Objects are essentially the same as bitfields; the only difference is that the
+fields can be of any type (including other objects) and they use full limbs
+instead subsets of their bits.
 
-## 6. Base types/IDs
+It is worth noting that the fields inside an object omit their ID limb, as it
+can be inferred from the order within the object. This serves as a way to
+optimize storage/memory space, as less limbs are required for identification.
+
+> Objects are fixed or flexible size depending on whether all their fields are
+fixed size or not.
+
+- **Fixed/Flexible size structure**:
+
+| **Semantic value** | ID |       Fields      |
+| ------------------ | -- | ----------------- |
+| **Size in limbs**  | 1  |   Fixed/Flexible  |
+
+In a fixed size object, fields can be accessed based on their position, whereas
+in a flexible size one, they must be sequentially read until the desired one is
+found.
+
+### Variants
+
+Variants stand at the top of the abstraction levels, and they enable the use of
+different types inside the same field, constrained by a list of allowed types,
+and the use of its ID. In this sense, they are the ISBF equivalent to Nim's
+object variants.
+
+> Variants are fixed or flexible sized depending on whether all their allowed
+types are fixed size or not. In the case of being fixed size, the common size
+will be of the biggest allowed type.
+
+- **Fixed/Flexible size structure**:
+
+| **Semantic value** | ID of the field type |       Field       |
+| ------------------ | -------------------- | ----------------- |
+| **Size in limbs**  |           1          |   Fixed/Flexible  |
+
+Variants and their allowed types are to be defined inside the interface
+description file of the ISBF dialect, and to be used within the definitions of
+other types to avoid having to declare each allowed combination of fields as
+multiple, different types.
+
+### Padding/skip
+
+For every empty slot or field in any of the previous type, a padding/skip limb
+is added, as to allow the parser to continue reading the next limb until the
+next field is found. This limb is fully zeroed to make identifying it easier.
+
+In the case the Padding/skip limb is in the position of what would be an ID in
+a fixed size type, then the parser can skip to the next field without reading
+the limbs within the current type, as it is considered now empty.
+
+## 6. Built-in ISBF dialect for dialect definition
+
+To create and share new ISBF dialects it is necessary to first create an
+interface definition file, which comes in the form of another ISBF file with
+a predefined dialect, which has as the dialect's magic bytes
+`[0, 0, 0, 0, 0, 0, 0, 0]`.
+
+### Base types/IDs
 
 The first `0xFF` ID values from `0x0` are reserved for the base
 types/sections/IDs of this specification and future ones, with the ones being
 defined in this document being:
 
-0.  (0x0) Padding/Skip
-2.  (0x2) Array
 3.  (0x3) BLOB
 4.  (0x4) String
 5.  (0x5) Natural
 6.  (0x6) Integer
 7.  (0x7) Rational
-8.  (0x8) BitField
-9.  (0x9) Object
-10. (0xA) Object variant
-
-### Padding/Skip
-
-The padding/skip type is meant to be safeguard against empty sections, so the
-parser can skip reading it and move onto the next value expecting an ID.
-
-## 7. Built-in ISBF dialect for dialect definition
-
-To share the description of an schema before sharing data, one uses and
-additional message with the schema ID `0`, followed by the description inside
-the data section. This is 
+8.  (0x8) Boolean
 
 ## 8. File termination
 
@@ -276,3 +326,13 @@ the data section. This is
 ## 10. Error handling
 
 ## 11. Security
+
+## 12. Providing ACID
+
+### Atomicity
+
+### Consistency
+
+### Isolation
+
+### Durability
