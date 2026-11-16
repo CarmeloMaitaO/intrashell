@@ -37,17 +37,17 @@ standard: {
     class: future
     tooltip: "Privileged servers in ISMK mode; user-space services in host mode. Always reached through the Intrashell interface via ISBF messages — never by direct call."
     isps: {
-      label: "IntraShell Page Store"
+      label: "Page Store"
       class: future
       tooltip: "Storage abstraction: device + schema API over a block model (SQLite pages, Ext4 extents, Nim heap chunks). Usable for raw drives, files, and in-memory stores — both as filesystem and database."
     }
     isds: {
-      label: "IntraShell Display Server"
+      label: "HID Server"
       class: future
       tooltip: "Display -> Window API with nested inner displays. Handles audio and HID input per window; manages HID, display, and audio drivers."
     }
     isns: {
-      label: "IntraShell Network Server"
+      label: "Bus device Server"
       class: future
       tooltip: "Device + Protocol + payload API. Acts as both proxy and server: relays outgoing messages and allows polling for incoming ones. Manages NIC and I2C/SPI/UART/GPIO drivers."
     }
@@ -154,6 +154,14 @@ isct: {
       class: future
       wasm: {
         label: "WASM"
+        class: future
+      }
+      jvm: {
+        label: "JVM"
+        class: future
+      }
+      clr: {
+        label: "CLR"
         class: future
       }
     }

@@ -34,10 +34,7 @@ sections.
 - Header: the first section of an ISBF messsage. It contains the information for
 the parser to know that is an ISBF and how it should interpret the rest of the
 data and its layout.
-- Metadata: the second section of an ISBF message. Provides additional
-information related to the integrity, layout, encription and compression of the
-ISBF message.
-- Data: the third section of an ISBF message, that contains combinations of
+- Data: the second section of an ISBF message, that contains combinations of
 objects, constrained by the definitions of the ISBF dialect.
 - Object: an heterogeneous, ordered container of different fields.
 - Field: a single data element of a determinate type.
@@ -57,16 +54,13 @@ Little-endian, unconditionally. This applies to:
 
 ## 4. Main binary structure
 
-|    **Section**    | Header | Metadata |   Data   |
-| ----------------- | ------ | -------- | -------- |
-| **Size in bytes** |   16   | variable | variable |
+|    **Section**    | Header |   Data   |
+| ----------------- | ------ | -------- |
+| **Size in bytes** |   16   | variable |
 
 The general structure of an ISBF message is divided in:
 1. Header: contains the magic bytes and version for both the ISBF and the
 description.
-2. Metadata: optional, and may contain the layout and an integrity check for
-the data, along with any information about the encryption and compression of
-said data.
 3. Data: contains the actual data.
 
 ### Header section
@@ -125,7 +119,7 @@ with the existing classifications being:
 - Atomic fields
 - Container fields
 - Objects
-- Object fields
+- Object Variants
 
 ### Atomic fields
 
@@ -180,20 +174,72 @@ hence the need for the `Size` section.
 | ------------------ | -- | --------- | -------- |
 | **Size in limbs**  | 1  | Arbitrary | variable |
 
+For flexible size containers, the length of the `Size` section is direcly
+derived from the actual length of the `Value` based on the necessary amount
+of limbs to represent the number of bytes contained, and from said number, the
+number of limbs that contains the value is derived.
+
 ### Array fields
+
+Array fields stand one level above container fields, and are the firsts of the
+abstract fields, as they are meant to hold a list of elements of another type,
+so it's impossible to make assumptions over it's structure and data without
+knowing the type the store first.
+
+In this sense, the `Size` section of an array can only represent the number of
+elements stored within the structure from the start, giving no information
+regarding the actual amount of limbs that hold the data without knowing the
+stored type first. Also, this section is interpreted as an arbitrary length
+unsigned integer.
+
+- **Fixed size structure**:
+
+| **Semantic value** | ID |  Size |  Value   |
+| ------------------ | -- | ----- | -------- |
+| **Size in limbs**  | 1  | Fixed |   Fixed  |
+
+> In this scenario it is only possible to store fixed size types.
+
+A fixed size array has a set amount of limbs and slots to store its elements,
+with its `Size` section representing the amount of used slots from the start of
+the container.
+
+- **Flexible size structure**:
+
+| **Semantic value** | ID |    Size   |  Value   |
+| ------------------ | -- | --------- | -------- |
+| **Size in limbs**  | 1  | Arbitrary | variable |
+
+> In this scenario it is possible to store both fixed and flexible size types.
+
+Flexible size arrays have a variable amount of elements, and as many slots as
+elements are currently present within it.
+
+### Bitfields
+
+Bitfields are the second of the abstract types, and stand one level above arrays
+in terms of abstraction. They are meant to be used to split one or multiple
+limbs into heterogeneous sequences of bits, which will become subfields for it,
+replicating the behaviour of an object/tuple at a smaller scale, but with the
+constraint of interpreting every subfield as an unsigned integer, and each of
+them not being bigger than 15 bits.
+
+> Bitfields are always fixed size, as they have a well defined structure, by
+which they are also treated as fixed size atomic types.
+
+- **Fixed size structure**:
+
+| **Semantic value** | ID |  Value   |
+| ------------------ | -- | -------- |
+| **Size in limbs**  | 1  |   Fixed  |
+
+While the core value is fixed size, its bits will be splitted to get the
+contained subfields within it. These subfields shall be defined inside the
+interface description file of the respective ISBF dialect.
 
 ### Objects
 
-### Object fields
-
-Regardless of whether the field has a set size or not, it's structure will
-include an additional ISBF `integer` value that will be added between it's ID
-and the container, which will either indicate:
-
-- The amount of used limbs inside a single fixed size container.
-- The amount of used bytes inside a single flexible size container. In this
-case, the amount of bytes will be used to determinate the amount of limbs to be
-read.
+### Object variants
 
 ## 6. Base types/IDs
 
@@ -202,7 +248,6 @@ types/sections/IDs of this specification and future ones, with the ones being
 defined in this document being:
 
 0.  (0x0) Padding/Skip
-1.  (0x1) Metadata
 2.  (0x2) Array
 3.  (0x3) BLOB
 4.  (0x4) String
@@ -218,56 +263,13 @@ defined in this document being:
 The padding/skip type is meant to be safeguard against empty sections, so the
 parser can skip reading it and move onto the next value expecting an ID.
 
-### Metadata
-
-Given that the parser should expect the data section just after the header, the
-metadata section is given an ID so it can be detected. It should be the first ID
-to be detected when parsing an ISBF message, otherwise the parser should error
-out.
-
-Also, the metadata is to be redefined at the ISBF dialect's interface
-description file, otherwise it should not be present within any message at all.
-
-### Array
-
-An array wraps a finite list of another type/object instances. It does so by
-first declaring the type/object being wrapped and then the number of elements
-inside a `natural`. It is possible to declare a defined size for the array
-inside the ISBF dialect's interface description file, with the empty slots being
-filled with `padding/skip` values and the length of the array being the actual
-amount of elements within it from the first index.
-
-### Binary Large Object (BLOB)
-
-A BLOB is an universal container for binary data that doesn't fall inside any of
-the provided types, doesn't make assumptions over the contained data while
-reading, and doesn't modify said data while writing, not even for endianness.
-
-### String
-
-A string is an UTF-8 string contained inside the basic wrapper structure.
-
-### Natural
-
-A natural is an arbitrary-length unsigned integer
-
-### Integer
-
-### Rational
-
-### BitField
-
-### Object
-
-### Object Variant
-
 ## 7. Built-in ISBF dialect for dialect definition
 
 To share the description of an schema before sharing data, one uses and
 additional message with the schema ID `0`, followed by the description inside
 the data section. This is 
 
-## 8. Section termination
+## 8. File termination
 
 ## 9. Versioning
 
